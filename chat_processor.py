@@ -221,37 +221,24 @@ def processar_comando(texto, service):
             
         # Verifica se é um comando de consulta
         elif any(palavra in texto for palavra in ['mostre', 'liste', 'quais', 'tem', 'há', 'consulte', 'livre']):
-            if 'livre' in texto:
-                # Verifica disponibilidade
-                data = extrair_data_hora(texto) or datetime.now(pytz.timezone('America/Sao_Paulo'))
-                horario = sugerir_horario(service, data)
-                if horario:
-                    return {
-                        "status": "sucesso",
-                        "mensagem": f"Próximo horário livre: {horario.strftime('%d/%m/%Y às %H:%M')}"
-                    }
-                else:
-                    return {
-                        "status": "sucesso",
-                        "mensagem": f"Não há horários livres em {data.strftime('%d/%m/%Y')}"
-                    }
-            
+            # Extrai a data do comando
             data = extrair_data_hora(texto)
             if not data:
                 # Se não encontrou data específica, assume hoje
                 data = datetime.now(pytz.timezone('America/Sao_Paulo'))
             
+            # Ajusta para início e fim do dia especificado
+            inicio = data.replace(hour=0, minute=0, second=0, microsecond=0)
+            fim = data.replace(hour=23, minute=59, second=59, microsecond=999999)
+            
             # Extrai email/calendário a ser consultado
             calendar_id = extrair_email(texto)
-            
-            inicio = data.replace(hour=0, minute=0, second=0).isoformat()
-            fim = data.replace(hour=23, minute=59, second=59).isoformat()
             
             try:
                 events_result = service.events().list(
                     calendarId=calendar_id,
-                    timeMin=inicio,
-                    timeMax=fim,
+                    timeMin=inicio.isoformat(),  # Usa a data extraída do comando
+                    timeMax=fim.isoformat(),     # Usa a data extraída do comando
                     singleEvents=True,
                     orderBy='startTime'
                 ).execute()
