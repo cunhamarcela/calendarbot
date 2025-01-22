@@ -197,6 +197,24 @@ def processar_comando(texto, service):
     texto = texto.lower().strip()
     
     try:
+        # Primeiro extrai a data do comando (usado por várias funções)
+        data = None
+        if 'hoje' in texto:
+            data = datetime.now(pytz.timezone('America/Sao_Paulo'))
+        elif 'amanhã' in texto:
+            data = datetime.now(pytz.timezone('America/Sao_Paulo')) + timedelta(days=1)
+        else:
+            match = re.search(r'dia (\d{1,2}/\d{1,2}(?:/\d{4})?)', texto)
+            if match:
+                data_texto = match.group(1)
+                if len(data_texto.split('/')) == 2:
+                    data_texto += f"/{datetime.now().year}"
+                try:
+                    data = datetime.strptime(data_texto, '%d/%m/%Y')
+                    data = pytz.timezone('America/Sao_Paulo').localize(data)
+                except ValueError:
+                    return {"status": "erro", "mensagem": ERROS['data_invalida']}
+
         # Verifica se é consulta de outra pessoa
         if 'o que o' in texto or 'agenda do' in texto:
             # Extrai a pessoa
@@ -213,22 +231,8 @@ def processar_comando(texto, service):
                 }
             
             calendar_id = PESSOAS[pessoa]
-            
-            # Determina a data
-            if 'hoje' in texto:
+            if not data:
                 data = datetime.now(pytz.timezone('America/Sao_Paulo'))
-            elif 'amanhã' in texto:
-                data = datetime.now(pytz.timezone('America/Sao_Paulo')) + timedelta(days=1)
-            else:
-                match = re.search(r'dia (\d{1,2}/\d{1,2}(?:/\d{4})?)', texto)
-                if match:
-                    data_texto = match.group(1)
-                    if len(data_texto.split('/')) == 2:
-                        data_texto += f"/{datetime.now().year}"
-                    data = datetime.strptime(data_texto, '%d/%m/%Y')
-                    data = pytz.timezone('America/Sao_Paulo').localize(data)
-                else:
-                    data = datetime.now(pytz.timezone('America/Sao_Paulo'))
             
             return consultar_agenda(service, data, texto)
 
@@ -268,24 +272,6 @@ def processar_comando(texto, service):
                 "status": "sucesso",
                 "mensagem": f"Horários livres {nome_agenda}:" + "\n".join(horarios_formatados)
             }
-            
-        # Verifica se é marcação com outra pessoa
-        match = re.search(r'marcar (\w+) com (?:o |a )?(\w+) (?:dia |para )?(\d{1,2}/\d{1,2}(?:/\d{4})?)\s+(?:às|as)\s+(\d{1,2}:\d{2})', texto)
-        if match:
-            tipo = match.group(1)
-            pessoa = match.group(2)
-            data = match.group(3)
-            hora = match.group(4)
-            
-            # Busca o email da pessoa
-            email = PESSOAS.get(pessoa.lower())
-            if not email:
-                return {
-                    "status": "erro",
-                    "mensagem": f"Pessoa '{pessoa}' não encontrada na lista de contatos."
-                }
-            
-            return criar_evento(service, tipo, data, hora, None, [email])
         
         # Verifica se é uma consulta
         if any(palavra in texto for palavra in ['agenda', 'eventos', 'compromissos', 'o que tem']):
