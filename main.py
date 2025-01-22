@@ -81,14 +81,16 @@ def auth():
         flow = InstalledAppFlow.from_client_secrets_file(
             CREDENTIALS_PATH,
             SCOPES,
-            redirect_uri=os.environ.get('REDIRECT_URI', 'http://localhost:8080/oauth2callback')
+            redirect_uri=os.environ.get('REDIRECT_URI')
         )
         authorization_url, state = flow.authorization_url(
             access_type='offline',
-            include_granted_scopes='true'
+            include_granted_scopes='true',
+            prompt='consent'  # Força o consentimento
         )
         return redirect(authorization_url)
     except Exception as e:
+        print(f"Erro na autenticação: {e}")  # Log do erro
         return jsonify({
             "error": f"Erro na autenticação: {str(e)}",
             "status": "erro"
