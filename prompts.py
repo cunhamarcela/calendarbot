@@ -65,6 +65,53 @@ CRIACAO = {
     ]
 }
 
+# Comandos para eventos com outras pessoas
+CRIACAO_COM_PESSOA = [
+    'marcar {tipo} com {pessoa} dia {data} às {hora}',
+    'agendar {tipo} com {pessoa} dia {data} às {hora}',
+    'marcar {tipo} com {pessoa} {data} às {hora}',
+    'agendar consulta com {pessoa} para {data} às {hora}'
+]
+
+# Comandos para verificar disponibilidade
+CONSULTA_DISPONIBILIDADE = {
+    'propria': [
+        'horários livres dessa semana',
+        'quando estou livre essa semana',
+        'qual horário livre eu tenho',
+        'quando posso marcar algo',
+        'mostre meus horários livres'
+    ],
+    'outra_pessoa': [
+        'horários livres do {pessoa}',
+        'quando o {pessoa} está livre',
+        'qual horário livre o {pessoa} tem',
+        'disponibilidade do {pessoa}',
+        'horários disponíveis do {pessoa}'
+    ],
+    'periodo': [
+        'próximas semanas',
+        'próximos dias',
+        'essa semana',
+        'semana que vem',
+        'próxima semana'
+    ]
+}
+
+# Eventos recorrentes
+EVENTOS_RECORRENTES = {
+    'terapia': {
+        'duracao': 60,
+        'recorrencia': 'WEEKLY',
+        'local': None
+    },
+    'pediatra': {
+        'duracao': 60,
+        'recorrencia': None,
+        'local': 'pediatra'
+    }
+}
+
 # Exemplos de uso para o usuário
 EXEMPLOS_USO = """
 Comandos disponíveis:
@@ -82,10 +129,17 @@ Consultas de outras pessoas:
 - o que o alberto tem amanhã
 - eventos do alberto hoje
 
+Verificar disponibilidade:
+- qual horário livre eu tenho essa semana
+- horários livres do alberto nas próximas semanas
+- quando estou livre essa semana
+
 Criação:
 - criar evento reunião dia 25/02/2025 às 15:00
 - agendar depilação no consultório dia 26/02 às 14:30
 - marcar consulta no pediatra amanhã às 10:00
+- marcar pediatra com o andré dia 04/02/2025 às 16:00
+- marcar terapia 24/01 às 16:00
 """
 
 # Formatos de data aceitos

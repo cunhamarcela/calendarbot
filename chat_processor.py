@@ -141,11 +141,129 @@ def sugerir_horario(service, data, duracao=60):
     
     return None
 
+def verificar_disponibilidade(service, calendar_id, inicio, fim):
+    """Verifica horários livres em um período"""
+    try:
+        events_result = service.events().list(
+            calendarId=calendar_id,
+            timeMin=inicio.isoformat(),
+            timeMax=fim.isoformat(),
+            singleEvents=True,
+            orderBy='startTime'
+        ).execute()
+        
+        eventos = events_result.get('items', [])
+        horarios_livres = []
+        
+        hora_atual = inicio.replace(hour=9, minute=0)  # Começa às 9h
+        fim_dia = inicio.replace(hour=18, minute=0)    # Termina às 18h
+        
+        while hora_atual < fim:
+            if hora_atual.hour < 9 or hora_atual.hour >= 18:
+                hora_atual += timedelta(days=1)
+                hora_atual = hora_atual.replace(hour=9, minute=0)
+                continue
+                
+            # Verifica se o horário está ocupado
+            ocupado = False
+            for evento in eventos:
+                inicio_evento = parser.parse(evento['start'].get('dateTime', evento['start'].get('date')))
+                fim_evento = parser.parse(evento['end'].get('dateTime', evento['end'].get('date')))
+                
+                if hora_atual >= inicio_evento and hora_atual < fim_evento:
+                    ocupado = True
+                    hora_atual = fim_evento
+                    break
+            
+            if not ocupado:
+                horarios_livres.append(hora_atual)
+                hora_atual += timedelta(minutes=30)
+            
+        return horarios_livres
+    
+    except Exception as e:
+        print(f"Erro ao verificar disponibilidade: {e}")
+        return []
+
 def processar_comando(texto, service):
     """Processa comandos usando padrões fixos"""
     texto = texto.lower().strip()
     
     try:
+        # Verifica se é consulta de disponibilidade
+        if any(padrao in texto for padrao in ['horário livre', 'horários livres', 'está livre', 'disponibilidade']):
+            # Determina o período
+            inicio = datetime.now(pytz.timezone('America/Sao_Paulo'))
+            fim = inicio + timedelta(days=7)  # Padrão: próxima semana
+            
+            if 'próximas semanas' in texto:
+                fim = inicio + timedelta(weeks=3)
+            elif 'semana que vem' in texto or 'próxima semana' in texto:
+                inicio = inicio + timedelta(days=7)
+                fim = inicio + timedelta(days=7)
+            
+            # Determina a pessoa
+            calendar_id = extrair_email(texto)
+            nome_agenda = "seus" if calendar_id == 'primary' else f"do {calendar_id.split('@')[0]}"
+            
+            horarios = verificar_disponibilidade(service, calendar_id, inicio, fim)
+            if not horarios:
+                return {
+                    "status": "sucesso",
+                    "mensagem": f"Não encontrei horários livres {nome_agenda} no período especificado."
+                }
+            
+            # Formata os horários encontrados
+            horarios_formatados = []
+            data_atual = None
+            for h in horarios[:10]:  # Mostra apenas os 10 primeiros horários
+                if data_atual != h.date():
+                    data_atual = h.date()
+                    horarios_formatados.append(f"\n{data_atual.strftime('%d/%m/%Y')}:")
+                horarios_formatados.append(f"- {h.strftime('%H:%M')}")
+            
+            return {
+                "status": "sucesso",
+                "mensagem": f"Horários livres {nome_agenda}:" + "\n".join(horarios_formatados)
+            }
+            
+        # Verifica se é marcação com outra pessoa
+        match = re.search(r'marcar (\w+) com (?:o |a )?(\w+) (?:dia |para )?(\d{1,2}/\d{1,2}(?:/\d{4})?)\s+(?:às|as)\s+(\d{1,2}:\d{2})', texto)
+        if match:
+            tipo = match.group(1)
+            pessoa = match.group(2)
+            data = match.group(3)
+            hora = match.group(4)
+            
+            # Busca o email da pessoa
+            email = PESSOAS.get(pessoa.lower())
+            if not email:
+                return {
+                    "status": "erro",
+                    "mensagem": f"Pessoa '{pessoa}' não encontrada na lista de contatos."
+                }
+            
+            # Cria o evento com a pessoa como participante
+            evento = criar_evento(service, tipo, data, hora, None)
+            if evento['status'] == 'sucesso':
+                # Adiciona a pessoa como participante
+                evento_id = evento['link'].split('eid=')[1]
+                evento_atualizado = service.events().get(calendarId='primary', eventId=evento_id).execute()
+                evento_atualizado['attendees'] = [{'email': email}]
+                
+                service.events().update(
+                    calendarId='primary',
+                    eventId=evento_id,
+                    body=evento_atualizado,
+                    sendUpdates='all'
+                ).execute()
+                
+                return {
+                    "status": "sucesso",
+                    "mensagem": f"Evento '{tipo}' criado e convite enviado para {pessoa}"
+                }
+            return evento
+        
         # Primeiro tenta extrair data específica
         match_data = re.search(r'dia (\d{1,2}/\d{1,2}(?:/\d{4})?)', texto)
         if not match_data:
