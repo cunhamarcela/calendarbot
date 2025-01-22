@@ -219,6 +219,120 @@
             background: var(--primary-light);
             border-radius: 3px;
         }
+
+        .tabs {
+            display: flex;
+            background: var(--white);
+            padding: 0.5rem;
+            gap: 0.5rem;
+            border-bottom: 1px solid var(--secondary);
+        }
+
+        .tab {
+            padding: 0.5rem 1rem;
+            border: none;
+            background: none;
+            color: var(--text-light);
+            cursor: pointer;
+            border-radius: var(--radius);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .tab.active {
+            background: var(--primary);
+            color: var(--white);
+        }
+
+        .tab-content {
+            display: none;
+            flex: 1;
+            overflow: auto;
+        }
+
+        .tab-content.active {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .calendar-controls {
+            padding: 1rem;
+            display: flex;
+            gap: 1rem;
+        }
+
+        .calendar-controls select,
+        .calendar-controls input {
+            padding: 0.5rem;
+            border: 1px solid var(--secondary);
+            border-radius: var(--radius);
+        }
+
+        .event-list {
+            padding: 1rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .event-item {
+            background: var(--secondary);
+            padding: 1rem;
+            border-radius: var(--radius);
+        }
+
+        .create-event-form {
+            padding: 1rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .form-group label {
+            color: var(--text-light);
+            font-size: 0.875rem;
+        }
+
+        .form-group input {
+            padding: 0.75rem;
+            border: 1px solid var(--secondary);
+            border-radius: var(--radius);
+        }
+
+        .create-button {
+            background: var(--primary);
+            color: var(--white);
+            border: none;
+            padding: 0.75rem;
+            border-radius: var(--radius);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+
+        @media (max-width: 640px) {
+            .tabs {
+                padding: 0.25rem;
+            }
+
+            .tab {
+                padding: 0.4rem 0.8rem;
+                font-size: 0.8125rem;
+            }
+
+            .calendar-controls {
+                flex-direction: column;
+            }
+        }
     </style>
 </head>
 <body>
@@ -228,56 +342,110 @@
         </header>
 
         <main class="chat-container">
-            <div class="chat-messages" id="chat-messages">
-                <!-- Messages will be added here -->
-            </div>
-
-            <div class="prompt-container">
-                <div class="prompt-category">
-                    <h3><i class="fas fa-calendar-day"></i> Consultas</h3>
-                    <div class="prompt-buttons">
-                        <button class="prompt-button" onclick="usePrompt('o que tem hoje')">Agenda de hoje</button>
-                        <button class="prompt-button" onclick="usePrompt('o que tem amanhã')">Agenda de amanhã</button>
-                        <button class="prompt-button" onclick="usePrompt('o que tem dia 25/02')">Data específica</button>
-                    </div>
-                </div>
-
-                <div class="prompt-category">
-                    <h3><i class="fas fa-user-clock"></i> Consultas do Alberto</h3>
-                    <div class="prompt-buttons">
-                        <button class="prompt-button" onclick="usePrompt('o que o alberto tem hoje')">Alberto hoje</button>
-                        <button class="prompt-button" onclick="usePrompt('o que o alberto tem amanhã')">Alberto amanhã</button>
-                        <button class="prompt-button" onclick="usePrompt('o que o alberto tem dia 25/02')">Alberto data específica</button>
-                    </div>
-                </div>
-
-                <div class="prompt-category">
-                    <h3><i class="fas fa-clock"></i> Disponibilidade</h3>
-                    <div class="prompt-buttons">
-                        <button class="prompt-button" onclick="usePrompt('quando estou livre essa semana')">Meus horários</button>
-                        <button class="prompt-button" onclick="usePrompt('quando o alberto está livre essa semana')">Alberto essa semana</button>
-                        <button class="prompt-button" onclick="usePrompt('quando o alberto está livre nas próximas semanas')">Próximas semanas</button>
-                    </div>
-                </div>
-
-                <div class="prompt-category">
-                    <h3><i class="fas fa-calendar-plus"></i> Criar Eventos</h3>
-                    <div class="prompt-buttons">
-                        <button class="prompt-button" onclick="usePrompt('marcar pediatra com o andré dia 04/02 às 16:00')">Pediatra</button>
-                        <button class="prompt-button" onclick="usePrompt('marcar terapia dia 24/01 às 16:00')">Terapia</button>
-                        <button class="prompt-button" onclick="usePrompt('marcar depilação dia 26/02 às 14:30')">Depilação</button>
-                    </div>
-                </div>
-            </div>
-
-            <div class="input-container">
-                <input type="text" id="chat-input" class="chat-input" 
-                       placeholder="Digite seu comando ou use os botões acima..."
-                       onkeypress="if(event.key === 'Enter') enviarComando()">
-                <button onclick="enviarComando()" class="send-button">
-                    <i class="fas fa-paper-plane"></i>
-                    <span>Enviar</span>
+            <!-- Adiciona tabs no topo -->
+            <div class="tabs">
+                <button class="tab active" onclick="showTab('chat')">
+                    <i class="fas fa-comments"></i> Chat
                 </button>
+                <button class="tab" onclick="showTab('calendar')">
+                    <i class="fas fa-calendar-alt"></i> Calendário
+                </button>
+                <button class="tab" onclick="showTab('create')">
+                    <i class="fas fa-plus"></i> Novo Evento
+                </button>
+            </div>
+
+            <!-- Conteúdo das tabs -->
+            <div id="chat-tab" class="tab-content active">
+                <div class="chat-messages" id="chat-messages">
+                    <!-- Messages will be added here -->
+                </div>
+
+                <div class="prompt-container">
+                    <div class="prompt-category">
+                        <h3><i class="fas fa-calendar-day"></i> Consultas</h3>
+                        <div class="prompt-buttons">
+                            <button class="prompt-button" onclick="usePrompt('o que tem hoje')">Agenda de hoje</button>
+                            <button class="prompt-button" onclick="usePrompt('o que tem amanhã')">Agenda de amanhã</button>
+                            <button class="prompt-button" onclick="usePrompt('o que tem dia 25/02')">Data específica</button>
+                        </div>
+                    </div>
+
+                    <div class="prompt-category">
+                        <h3><i class="fas fa-user-clock"></i> Consultas do Alberto</h3>
+                        <div class="prompt-buttons">
+                            <button class="prompt-button" onclick="usePrompt('o que o alberto tem hoje')">Alberto hoje</button>
+                            <button class="prompt-button" onclick="usePrompt('o que o alberto tem amanhã')">Alberto amanhã</button>
+                            <button class="prompt-button" onclick="usePrompt('o que o alberto tem dia 25/02')">Alberto data específica</button>
+                        </div>
+                    </div>
+
+                    <div class="prompt-category">
+                        <h3><i class="fas fa-clock"></i> Disponibilidade</h3>
+                        <div class="prompt-buttons">
+                            <button class="prompt-button" onclick="usePrompt('quando estou livre essa semana')">Meus horários</button>
+                            <button class="prompt-button" onclick="usePrompt('quando o alberto está livre essa semana')">Alberto essa semana</button>
+                            <button class="prompt-button" onclick="usePrompt('quando o alberto está livre nas próximas semanas')">Próximas semanas</button>
+                        </div>
+                    </div>
+
+                    <div class="prompt-category">
+                        <h3><i class="fas fa-calendar-plus"></i> Criar Eventos</h3>
+                        <div class="prompt-buttons">
+                            <button class="prompt-button" onclick="usePrompt('marcar pediatra com o andré dia 04/02 às 16:00')">Pediatra</button>
+                            <button class="prompt-button" onclick="usePrompt('marcar terapia dia 24/01 às 16:00')">Terapia</button>
+                            <button class="prompt-button" onclick="usePrompt('marcar depilação dia 26/02 às 14:30')">Depilação</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="input-container">
+                    <input type="text" id="chat-input" class="chat-input" 
+                           placeholder="Digite seu comando ou use os botões acima..."
+                           onkeypress="if(event.key === 'Enter') enviarComando()">
+                    <button onclick="enviarComando()" class="send-button">
+                        <i class="fas fa-paper-plane"></i>
+                        <span>Enviar</span>
+                    </button>
+                </div>
+            </div>
+
+            <div id="calendar-tab" class="tab-content">
+                <div class="calendar-controls">
+                    <select id="calendar-select" onchange="listarEventos(this.value)">
+                        <option value="primary">Meu Calendário</option>
+                    </select>
+                    <input type="date" id="date-filter" onchange="filtrarPorData(this.value)">
+                </div>
+                <div id="event-list" class="event-list"></div>
+            </div>
+
+            <div id="create-tab" class="tab-content">
+                <form id="create-event-form" onsubmit="criarEvento(event)" class="create-event-form">
+                    <div class="form-group">
+                        <label>Título</label>
+                        <input type="text" name="summary" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Local</label>
+                        <input type="text" name="location">
+                    </div>
+                    <div class="form-group">
+                        <label>Início</label>
+                        <input type="datetime-local" name="start" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Fim</label>
+                        <input type="datetime-local" name="end" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Participantes (emails separados por vírgula)</label>
+                        <input type="text" name="attendees">
+                    </div>
+                    <button type="submit" class="create-button">
+                        <i class="fas fa-plus"></i> Criar Evento
+                    </button>
+                </form>
             </div>
         </main>
     </div>

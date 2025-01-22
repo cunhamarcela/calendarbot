@@ -144,6 +144,10 @@ def sugerir_horario(service, data, duracao=60):
 def verificar_disponibilidade(service, calendar_id, inicio, fim):
     """Verifica horários livres em um período"""
     try:
+        # Ajusta para início da semana se necessário
+        if inicio.weekday() != 0:  # Se não é segunda-feira
+            inicio = inicio - timedelta(days=inicio.weekday())
+        
         events_result = service.events().list(
             calendarId=calendar_id,
             timeMin=inicio.isoformat(),
@@ -155,29 +159,32 @@ def verificar_disponibilidade(service, calendar_id, inicio, fim):
         eventos = events_result.get('items', [])
         horarios_livres = []
         
-        hora_atual = inicio.replace(hour=9, minute=0)  # Começa às 9h
-        fim_dia = inicio.replace(hour=18, minute=0)    # Termina às 18h
-        
-        while hora_atual < fim:
-            if hora_atual.hour < 9 or hora_atual.hour >= 18:
-                hora_atual += timedelta(days=1)
-                hora_atual = hora_atual.replace(hour=9, minute=0)
-                continue
+        # Itera por cada dia do período
+        dia_atual = inicio
+        while dia_atual < fim:
+            if dia_atual.weekday() < 5:  # Segunda a Sexta
+                hora_atual = dia_atual.replace(hour=9, minute=0)  # Começa às 9h
+                fim_dia = dia_atual.replace(hour=18, minute=0)    # Termina às 18h
                 
-            # Verifica se o horário está ocupado
-            ocupado = False
-            for evento in eventos:
-                inicio_evento = parser.parse(evento['start'].get('dateTime', evento['start'].get('date')))
-                fim_evento = parser.parse(evento['end'].get('dateTime', evento['end'].get('date')))
-                
-                if hora_atual >= inicio_evento and hora_atual < fim_evento:
-                    ocupado = True
-                    hora_atual = fim_evento
-                    break
+                while hora_atual < fim_dia:
+                    # Verifica se o horário está ocupado
+                    ocupado = False
+                    for evento in eventos:
+                        inicio_evento = parser.parse(evento['start'].get('dateTime', evento['start'].get('date')))
+                        fim_evento = parser.parse(evento['end'].get('dateTime', evento['end'].get('date')))
+                        
+                        if hora_atual >= inicio_evento and hora_atual < fim_evento:
+                            ocupado = True
+                            hora_atual = fim_evento
+                            break
+                    
+                    if not ocupado:
+                        horarios_livres.append(hora_atual)
+                        hora_atual += timedelta(minutes=30)
+                    else:
+                        hora_atual += timedelta(minutes=30)
             
-            if not ocupado:
-                horarios_livres.append(hora_atual)
-                hora_atual += timedelta(minutes=30)
+            dia_atual += timedelta(days=1)
             
         return horarios_livres
     
