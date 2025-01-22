@@ -6,6 +6,8 @@ from google.auth.transport.requests import Request
 import json
 import os
 import pathlib
+from datetime import datetime, timedelta
+import pytz
 
 # Configurações de ambiente
 os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
@@ -152,20 +154,85 @@ def listar_eventos():
         return jsonify({"error": "Autenticação necessária", "status": "erro"}), 401
     
     try:
+        # Pega parâmetros da requisição
+        email = request.args.get('email', 'primary')  # 'primary' é a agenda principal
+        data_inicio = request.args.get('inicio')
+        data_fim = request.args.get('fim')
+        
+        # Se não especificou datas, usa próximos 7 dias
+        if not data_inicio:
+            tz = pytz.timezone('America/Sao_Paulo')
+            agora = datetime.now(tz)
+            data_inicio = agora.isoformat()
+            data_fim = (agora + timedelta(days=7)).isoformat()
+        
         events_result = current_service.events().list(
-            calendarId='primary', maxResults=10, singleEvents=True, orderBy='startTime'
+            calendarId=email,
+            timeMin=data_inicio,
+            timeMax=data_fim,
+            maxResults=10,
+            singleEvents=True,
+            orderBy='startTime'
         ).execute()
+        
         events = events_result.get('items', [])
         if not events:
-            return jsonify({"message": "Nenhum evento encontrado."})
-        return jsonify({"events": [
-            {"start": event['start'].get('dateTime', event['start'].get('date')), "summary": event['summary']}
-            for event in events
-        ]})
+            return jsonify({
+                "message": "Nenhum evento encontrado para o período.",
+                "periodo": {
+                    "inicio": data_inicio,
+                    "fim": data_fim
+                }
+            })
+            
+        return jsonify({
+            "events": [{
+                "id": event['id'],
+                "summary": event['summary'],
+                "start": event['start'].get('dateTime', event['start'].get('date')),
+                "end": event['end'].get('dateTime', event['end'].get('date')),
+                "location": event.get('location', ''),
+                "attendees": [
+                    att['email'] for att in event.get('attendees', [])
+                ],
+                "link": event['htmlLink']
+            } for event in events],
+            "periodo": {
+                "inicio": data_inicio,
+                "fim": data_fim
+            }
+        })
+        
     except Exception as e:
         print(f"Erro no endpoint /listar: {e}")
-        reset_service()  # Reseta o serviço em caso de erro
+        reset_service()
         return jsonify({"error": f"Erro ao listar eventos: {str(e)}"}), 500
+
+# Endpoint para listar calendários disponíveis
+@app.route('/calendarios', methods=['GET'])
+def listar_calendarios():
+    current_service = get_service()
+    if current_service is None:
+        reset_service()
+        return jsonify({"error": "Autenticação necessária", "status": "erro"}), 401
+    
+    try:
+        calendar_list = current_service.calendarList().list().execute()
+        calendars = calendar_list.get('items', [])
+        
+        return jsonify({
+            "calendarios": [{
+                "id": cal['id'],
+                "summary": cal['summary'],
+                "primary": cal.get('primary', False),
+                "accessRole": cal['accessRole']
+            } for cal in calendars]
+        })
+        
+    except Exception as e:
+        print(f"Erro ao listar calendários: {e}")
+        reset_service()
+        return jsonify({"error": f"Erro ao listar calendários: {str(e)}"}), 500
 
 # Endpoint para criar um evento
 @app.route('/criar', methods=['POST'])
