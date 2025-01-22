@@ -3,6 +3,7 @@ import re
 import pytz
 from dateutil import parser
 from dateutil.relativedelta import relativedelta
+from config import PESSOAS, LOCAIS, DURACOES, HORARIO_COMERCIAL
 
 def extrair_data_hora(texto):
     """Extrai data e hora do texto"""
@@ -66,7 +67,19 @@ def calcular_proximo_dia(dia_semana, hora=9, minuto=0):
 
 def extrair_email(texto):
     """Extrai email ou nome de pessoa do texto"""
-    # Padrões comuns de menção a pessoas
+    texto = texto.lower()
+    
+    # Primeiro tenta encontrar um email direto
+    match_email = re.search(r'[\w\.-]+@[\w\.-]+', texto)
+    if match_email:
+        return match_email.group(0)
+    
+    # Depois procura por nomes no mapeamento
+    for nome, email in PESSOAS.items():
+        if nome in texto:
+            return email
+    
+    # Por fim, tenta extrair um nome e converter para email
     padroes = [
         r'(?:agenda|eventos|compromissos)\s+(?:do|da|de)\s+([^,\s]+(?:\s+[^,\s]+){0,2})',
         r'(?:o que|quais|qual)\s+(?:o|a)\s+([^,\s]+(?:\s+[^,\s]+){0,2})\s+tem',
@@ -74,17 +87,58 @@ def extrair_email(texto):
     ]
     
     for padrao in padroes:
-        match = re.search(padrao, texto.lower())
+        match = re.search(padrao, texto)
         if match:
             nome = match.group(1).strip()
-            # Se já é um email, retorna direto
-            if '@' in nome:
-                return nome
-            # Se não, converte nome para email (exemplo)
-            nome_formatado = nome.replace(' ', '.').lower()
-            return f"{nome_formatado}@gmail.com"
+            return PESSOAS.get(nome.lower(), f"{nome.replace(' ', '.').lower()}@gmail.com")
     
-    return 'primary'  # Retorna 'primary' se não encontrar nenhum nome/email
+    return 'primary'
+
+def sugerir_horario(service, data, duracao=60):
+    """Sugere próximo horário livre"""
+    inicio_dia = data.replace(
+        hour=HORARIO_COMERCIAL['inicio'],
+        minute=0, second=0
+    )
+    fim_dia = data.replace(
+        hour=HORARIO_COMERCIAL['fim'],
+        minute=0, second=0
+    )
+    
+    events_result = service.events().list(
+        calendarId='primary',
+        timeMin=inicio_dia.isoformat(),
+        timeMax=fim_dia.isoformat(),
+        singleEvents=True,
+        orderBy='startTime'
+    ).execute()
+    
+    horarios_ocupados = [
+        (parser.parse(event['start'].get('dateTime')),
+         parser.parse(event['end'].get('dateTime')))
+        for event in events_result.get('items', [])
+    ]
+    
+    horario_atual = inicio_dia
+    while horario_atual < fim_dia:
+        # Verifica se o horário está livre
+        livre = True
+        for inicio, fim in horarios_ocupados:
+            if (horario_atual >= inicio and 
+                horario_atual < fim):
+                livre = False
+                horario_atual = fim
+                break
+        
+        if livre:
+            # Verifica se cabe o evento
+            fim_evento = horario_atual + timedelta(minutes=duracao)
+            if fim_evento <= fim_dia:
+                return horario_atual
+            
+        horario_atual += timedelta(minutes=30)
+    
+    return None
 
 def processar_comando(texto, service):
     """Processa comandos em linguagem natural"""
@@ -113,15 +167,43 @@ def processar_comando(texto, service):
                     "mensagem": "Não consegui entender a data e hora do evento"
                 }
             
+            # Adiciona sugestão de horário se não especificado
+            if not data_hora:
+                data = datetime.now(pytz.timezone('America/Sao_Paulo'))
+                if 'amanhã' in texto:
+                    data += timedelta(days=1)
+                
+                # Determina duração baseado no tipo de evento
+                duracao = 60
+                for tipo, dur in DURACOES.items():
+                    if tipo in texto:
+                        duracao = dur
+                        break
+                
+                data_hora = sugerir_horario(service, data, duracao)
+                if not data_hora:
+                    return {
+                        "status": "erro",
+                        "mensagem": "Não encontrei horários livres para hoje/amanhã. Tente especificar outra data."
+                    }
+            
+            # Identifica local do evento
+            local = None
+            for nome_local, endereco in LOCAIS.items():
+                if nome_local in texto:
+                    local = endereco
+                    break
+            
             # Cria o evento
             evento = {
                 'summary': titulo,
+                'location': local,
                 'start': {
                     'dateTime': data_hora.isoformat(),
                     'timeZone': 'America/Sao_Paulo',
                 },
                 'end': {
-                    'dateTime': (data_hora + timedelta(hours=1)).isoformat(),
+                    'dateTime': (data_hora + timedelta(minutes=duracao)).isoformat(),
                     'timeZone': 'America/Sao_Paulo',
                 }
             }
@@ -138,7 +220,22 @@ def processar_comando(texto, service):
             }
             
         # Verifica se é um comando de consulta
-        elif any(palavra in texto for palavra in ['mostre', 'liste', 'quais', 'tem', 'há', 'consulte']):
+        elif any(palavra in texto for palavra in ['mostre', 'liste', 'quais', 'tem', 'há', 'consulte', 'livre']):
+            if 'livre' in texto:
+                # Verifica disponibilidade
+                data = extrair_data_hora(texto) or datetime.now(pytz.timezone('America/Sao_Paulo'))
+                horario = sugerir_horario(service, data)
+                if horario:
+                    return {
+                        "status": "sucesso",
+                        "mensagem": f"Próximo horário livre: {horario.strftime('%d/%m/%Y às %H:%M')}"
+                    }
+                else:
+                    return {
+                        "status": "sucesso",
+                        "mensagem": f"Não há horários livres em {data.strftime('%d/%m/%Y')}"
+                    }
+            
             data = extrair_data_hora(texto)
             if not data:
                 # Se não encontrou data específica, assume hoje
