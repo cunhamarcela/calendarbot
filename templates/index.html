@@ -64,30 +64,132 @@
             color: red;
             margin-top: 5px;
         }
+        
+        /* Estilos do Chat */
+        .chat-container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+            height: 400px;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .chat-messages {
+            flex-grow: 1;
+            overflow-y: auto;
+            margin-bottom: 15px;
+            padding: 10px;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+        }
+        
+        .message {
+            margin-bottom: 10px;
+            padding: 8px 12px;
+            border-radius: 15px;
+            max-width: 80%;
+        }
+        
+        .user-message {
+            background-color: #4285f4;
+            color: white;
+            margin-left: auto;
+        }
+        
+        .bot-message {
+            background-color: #e9ecef;
+            color: black;
+            margin-right: auto;
+        }
+        
+        .chat-input-container {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .chat-input {
+            flex-grow: 1;
+        }
+        
+        .tabs {
+            display: flex;
+            margin-bottom: 20px;
+            gap: 10px;
+        }
+        
+        .tab {
+            padding: 10px 20px;
+            background-color: #f8f9fa;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        
+        .tab.active {
+            background-color: #4285f4;
+            color: white;
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>Gerenciador de Agenda Google</h1>
         
-        <!-- Filtros -->
-        <div class="filters">
-            <div class="form-group">
-                <label for="calendar-select">Calendário:</label>
-                <select id="calendar-select" onchange="listarEventos(this.value)">
-                    <option value="primary">Meu Calendário</option>
-                </select>
-            </div>
-            <div class="form-group">
-                <label for="date-filter">Data:</label>
-                <input type="date" id="date-filter" onchange="filtrarPorData(this.value)">
+        <!-- Tabs -->
+        <div class="tabs">
+            <button class="tab active" onclick="showTab('chat')">Chat</button>
+            <button class="tab" onclick="showTab('calendar')">Calendário</button>
+        </div>
+        
+        <!-- Chat Tab -->
+        <div id="chat-tab" class="tab-content active">
+            <div class="chat-container">
+                <div class="chat-messages" id="chat-messages">
+                    <div class="message bot-message">
+                        Olá! Como posso ajudar com sua agenda hoje?
+                    </div>
+                </div>
+                <div class="chat-input-container">
+                    <input type="text" id="chat-input" class="chat-input" 
+                           placeholder="Digite seu comando... (ex: 'crie um evento amanhã às 15h chamado reunião')"
+                           onkeypress="if(event.key === 'Enter') enviarComando()">
+                    <button onclick="enviarComando()">Enviar</button>
+                </div>
             </div>
         </div>
+        
+        <!-- Calendar Tab -->
+        <div id="calendar-tab" class="tab-content">
+            <!-- Filtros -->
+            <div class="filters">
+                <div class="form-group">
+                    <label for="calendar-select">Calendário:</label>
+                    <select id="calendar-select" onchange="listarEventos(this.value)">
+                        <option value="primary">Meu Calendário</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="date-filter">Data:</label>
+                    <input type="date" id="date-filter" onchange="filtrarPorData(this.value)">
+                </div>
+            </div>
 
-        <!-- Lista de Eventos -->
-        <h2>Eventos</h2>
-        <div id="event-list" class="event-list">
-            <p>Carregando eventos...</p>
+            <!-- Lista de Eventos -->
+            <h2>Eventos</h2>
+            <div id="event-list" class="event-list">
+                <p>Carregando eventos...</p>
+            </div>
         </div>
     </div>
 
@@ -230,6 +332,65 @@
             }
         }
 
+        // Função para alternar entre as tabs
+        function showTab(tabName) {
+            // Atualiza as tabs
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.querySelector(`[onclick="showTab('${tabName}')"]`).classList.add('active');
+            
+            // Atualiza o conteúdo
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            document.getElementById(`${tabName}-tab`).classList.add('active');
+        }
+        
+        // Função para enviar comando do chat
+        async function enviarComando() {
+            const input = document.getElementById('chat-input');
+            const comando = input.value.trim();
+            if (!comando) return;
+            
+            // Adiciona mensagem do usuário
+            adicionarMensagem(comando, 'user');
+            input.value = '';
+            
+            try {
+                const response = await fetch('/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ comando })
+                });
+                
+                const data = await response.json();
+                
+                // Adiciona resposta do bot
+                adicionarMensagem(data.mensagem, 'bot');
+                
+                // Se foi um evento criado com sucesso, atualiza a lista
+                if (data.status === 'sucesso' && data.link) {
+                    listarEventos();
+                }
+            } catch (error) {
+                console.error('Erro ao processar comando:', error);
+                adicionarMensagem('Desculpe, ocorreu um erro ao processar seu comando.', 'bot');
+            }
+        }
+        
+        // Função para adicionar mensagem ao chat
+        function adicionarMensagem(texto, tipo) {
+            const messagesDiv = document.getElementById('chat-messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${tipo}-message`;
+            messageDiv.textContent = texto;
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+        
         // Inicialização
         document.addEventListener('DOMContentLoaded', () => {
             carregarCalendarios();
