@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify, render_template, redirect, url_for
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from google.oauth2.credentials import Credentials
+from google.auth.transport.requests import Request
 import json
 import os
 import pathlib
@@ -53,7 +54,17 @@ def carregar_credenciais():
             
         with open(TOKEN_PATH, 'r') as token:
             creds_data = json.load(token)
-            return Credentials.from_authorized_user_info(creds_data, SCOPES)
+            creds = Credentials.from_authorized_user_info(creds_data, SCOPES)
+            
+            if not creds.valid:
+                if creds.expired and creds.refresh_token:
+                    print("Renovando token expirado...")
+                    creds.refresh(Request())
+                    salvar_credenciais(creds)
+                else:
+                    print("Credenciais inválidas e não podem ser renovadas")
+                    return None
+            return creds
     except Exception as e:
         print(f"Erro ao carregar credenciais: {e}")
         return None
@@ -61,16 +72,29 @@ def carregar_credenciais():
 def get_service():
     """Retorna o serviço, inicializando se necessário"""
     global service
-    if service is None:
-        creds = carregar_credenciais()
-        if creds and creds.valid:
-            service = build('calendar', 'v3', credentials=creds)
-    return service
+    try:
+        if service is None:
+            creds = carregar_credenciais()
+            if creds and creds.valid:
+                service = build('calendar', 'v3', credentials=creds)
+            else:
+                print("Credenciais não disponíveis ou inválidas")
+                return None
+        return service
+    except Exception as e:
+        print(f"Erro ao obter serviço: {e}")
+        return None
+
+def reset_service():
+    """Reseta o serviço global"""
+    global service
+    service = None
 
 # Rota inicial
 @app.route('/')
 def home():
     if get_service() is None:
+        reset_service()  # Limpa o serviço se estiver inválido
         return render_template('auth_required.html')
     return render_template('index.html')
 
@@ -78,6 +102,7 @@ def home():
 @app.route('/auth')
 def auth():
     try:
+        reset_service()  # Limpa qualquer serviço existente
         flow = InstalledAppFlow.from_client_secrets_file(
             CREDENTIALS_PATH,
             SCOPES,
@@ -86,11 +111,11 @@ def auth():
         authorization_url, state = flow.authorization_url(
             access_type='offline',
             include_granted_scopes='true',
-            prompt='consent'  # Força o consentimento
+            prompt='consent'
         )
         return redirect(authorization_url)
     except Exception as e:
-        print(f"Erro na autenticação: {e}")  # Log do erro
+        print(f"Erro na autenticação: {e}")
         return jsonify({
             "error": f"Erro na autenticação: {str(e)}",
             "status": "erro"
@@ -123,6 +148,7 @@ def oauth2callback():
 def listar_eventos():
     current_service = get_service()
     if current_service is None:
+        reset_service()
         return jsonify({"error": "Autenticação necessária", "status": "erro"}), 401
     
     try:
@@ -138,6 +164,7 @@ def listar_eventos():
         ]})
     except Exception as e:
         print(f"Erro no endpoint /listar: {e}")
+        reset_service()  # Reseta o serviço em caso de erro
         return jsonify({"error": f"Erro ao listar eventos: {str(e)}"}), 500
 
 # Endpoint para criar um evento
@@ -145,6 +172,7 @@ def listar_eventos():
 def criar_evento():
     current_service = get_service()
     if current_service is None:
+        reset_service()
         return jsonify({"error": "Autenticação necessária", "status": "erro"}), 401
     
     try:
@@ -193,6 +221,7 @@ def criar_evento():
     except Exception as e:
         erro_msg = str(e)
         print(f"Erro no endpoint /criar: {erro_msg}")
+        reset_service()  # Reseta o serviço em caso de erro
         return jsonify({
             "error": f"Erro ao criar evento: {erro_msg}",
             "status": "erro",
