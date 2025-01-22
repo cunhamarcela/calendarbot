@@ -190,37 +190,35 @@ def processar_comando(texto, service):
 def criar_evento(service, titulo, data_texto, hora, local):
     """Cria um novo evento"""
     try:
-        data = datetime.strptime(data_texto, '%d/%m/%Y')
-        data = pytz.timezone('America/Sao_Paulo').localize(data)
-        hora = datetime.strptime(hora, '%H:%M').time()
+        # Determina duração baseado no tipo de evento
+        duracao = 60  # duração padrão
+        for tipo, dur in DURACOES.items():
+            if tipo.lower() in titulo.lower():
+                duracao = dur
+                break
+
+        # Processa data e hora
+        if len(data_texto.split('/')) == 2:
+            data_texto += f"/{datetime.now().year}"
         
-        # Adiciona sugestão de horário se não especificado
-        if not data:
-            data = datetime.now(pytz.timezone('America/Sao_Paulo'))
-            if 'amanhã' in data_texto:
-                data += timedelta(days=1)
-            
-            # Determina duração baseado no tipo de evento
-            duracao = 60
-            for tipo, dur in DURACOES.items():
-                if tipo in data_texto:
-                    duracao = dur
-                    break
-            
-            data = sugerir_horario(service, data, duracao)
-            if not data:
-                return {
-                    "status": "erro",
-                    "mensagem": "Não encontrei horários livres para hoje/amanhã. Tente especificar outra data."
-                }
+        data = datetime.strptime(f"{data_texto} {hora}", '%d/%m/%Y %H:%M')
+        data = pytz.timezone('America/Sao_Paulo').localize(data)
         
         # Identifica local do evento
-        local = local if local else None
+        endereco = None
+        if local:
+            endereco = LOCAIS.get(local.lower())
+        else:
+            # Procura por locais mencionados no título
+            for nome_local, end in LOCAIS.items():
+                if nome_local.lower() in titulo.lower():
+                    endereco = end
+                    break
         
         # Cria o evento
         evento = {
             'summary': titulo,
-            'location': local,
+            'location': endereco,
             'start': {
                 'dateTime': data.isoformat(),
                 'timeZone': 'America/Sao_Paulo',
@@ -233,12 +231,17 @@ def criar_evento(service, titulo, data_texto, hora, local):
         
         evento_criado = service.events().insert(
             calendarId='primary',
-            body=evento
+            body=evento,
+            sendUpdates='all'
         ).execute()
+        
+        # Formata a mensagem de retorno
+        msg_local = f" no {local}" if local else ""
+        msg_duracao = f" ({duracao} minutos)" if duracao != 60 else ""
         
         return {
             "status": "sucesso",
-            "mensagem": f"Evento '{titulo}' criado para {data.strftime('%d/%m/%Y às %H:%M')}",
+            "mensagem": f"Evento '{titulo}'{msg_local} criado para {data.strftime('%d/%m/%Y às %H:%M')}{msg_duracao}",
             "link": evento_criado['htmlLink']
         }
         
