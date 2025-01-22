@@ -269,23 +269,19 @@ def criar_evento():
                 'timeZone': 'America/Sao_Paulo',
             },
             'attendees': [{'email': email} for email in data['attendees']],
-            # Adiciona configurações de fuso horário
             'reminders': {
                 'useDefault': False,
                 'overrides': [
                     {'method': 'email', 'minutes': 24 * 60},
                     {'method': 'popup', 'minutes': 30},
                 ],
-            },
-            # Força o fuso horário do evento
-            'timeZone': 'America/Sao_Paulo'
+            }
         }
 
         evento_criado = current_service.events().insert(
             calendarId='primary',
             body=evento,
-            # Adiciona parâmetro para garantir o fuso horário
-            timeZone='America/Sao_Paulo'
+            sendUpdates='all'  # Envia notificações para os participantes
         ).execute()
         
         # Formata as datas para exibição
