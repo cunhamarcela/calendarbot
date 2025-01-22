@@ -64,6 +64,28 @@ def calcular_proximo_dia(dia_semana, hora=9, minuto=0):
     data = agora + timedelta(days=dias_adicionar)
     return data.replace(hour=hora, minute=minuto)
 
+def extrair_email(texto):
+    """Extrai email ou nome de pessoa do texto"""
+    # Padrões comuns de menção a pessoas
+    padroes = [
+        r'(?:agenda|eventos|compromissos)\s+(?:do|da|de)\s+([^,\s]+(?:\s+[^,\s]+){0,2})',
+        r'(?:o que|quais|qual)\s+(?:o|a)\s+([^,\s]+(?:\s+[^,\s]+){0,2})\s+tem',
+        r'([^,\s]+(?:\s+[^,\s]+){0,2})\s+(?:está livre|tem algum evento|tem compromisso)'
+    ]
+    
+    for padrao in padroes:
+        match = re.search(padrao, texto.lower())
+        if match:
+            nome = match.group(1).strip()
+            # Se já é um email, retorna direto
+            if '@' in nome:
+                return nome
+            # Se não, converte nome para email (exemplo)
+            nome_formatado = nome.replace(' ', '.').lower()
+            return f"{nome_formatado}@gmail.com"
+    
+    return 'primary'  # Retorna 'primary' se não encontrar nenhum nome/email
+
 def processar_comando(texto, service):
     """Processa comandos em linguagem natural"""
     texto = texto.lower()
@@ -122,40 +144,57 @@ def processar_comando(texto, service):
                 # Se não encontrou data específica, assume hoje
                 data = datetime.now(pytz.timezone('America/Sao_Paulo'))
             
+            # Extrai email/calendário a ser consultado
+            calendar_id = extrair_email(texto)
+            
             inicio = data.replace(hour=0, minute=0, second=0).isoformat()
             fim = data.replace(hour=23, minute=59, second=59).isoformat()
             
-            events_result = service.events().list(
-                calendarId='primary',
-                timeMin=inicio,
-                timeMax=fim,
-                singleEvents=True,
-                orderBy='startTime'
-            ).execute()
-            
-            events = events_result.get('items', [])
-            
-            if not events:
+            try:
+                events_result = service.events().list(
+                    calendarId=calendar_id,
+                    timeMin=inicio,
+                    timeMax=fim,
+                    singleEvents=True,
+                    orderBy='startTime'
+                ).execute()
+                
+                events = events_result.get('items', [])
+                
+                if not events:
+                    nome_agenda = "sua agenda" if calendar_id == 'primary' else f"agenda de {calendar_id.split('@')[0]}"
+                    return {
+                        "status": "sucesso",
+                        "mensagem": f"Nenhum evento encontrado em {nome_agenda} para {data.strftime('%d/%m/%Y')}"
+                    }
+                
+                eventos_formatados = []
+                for event in events:
+                    start = event['start'].get('dateTime', event['start'].get('date'))
+                    start_time = parser.parse(start).strftime('%H:%M')
+                    eventos_formatados.append(f"- {start_time}: {event['summary']}")
+                
+                nome_agenda = "sua agenda" if calendar_id == 'primary' else f"agenda de {calendar_id.split('@')[0]}"
                 return {
                     "status": "sucesso",
-                    "mensagem": f"Nenhum evento encontrado para {data.strftime('%d/%m/%Y')}"
+                    "mensagem": f"Eventos em {nome_agenda} para {data.strftime('%d/%m/%Y')}:\n" + "\n".join(eventos_formatados)
                 }
-            
-            eventos_formatados = []
-            for event in events:
-                start = event['start'].get('dateTime', event['start'].get('date'))
-                start_time = parser.parse(start).strftime('%H:%M')
-                eventos_formatados.append(f"- {start_time}: {event['summary']}")
-            
-            return {
-                "status": "sucesso",
-                "mensagem": f"Eventos para {data.strftime('%d/%m/%Y')}:\n" + "\n".join(eventos_formatados)
-            }
+                
+            except Exception as e:
+                if 'Not Found' in str(e):
+                    return {
+                        "status": "erro",
+                        "mensagem": f"Não tenho acesso à agenda de {calendar_id}"
+                    }
+                raise e
             
         else:
             return {
                 "status": "erro",
-                "mensagem": "Desculpe, não entendi o comando. Tente algo como:\n- crie uma reunião amanhã às 15h\n- mostre meus eventos de hoje"
+                "mensagem": "Desculpe, não entendi o comando. Tente algo como:\n" +
+                          "- crie uma reunião amanhã às 15h\n" +
+                          "- mostre meus eventos de hoje\n" +
+                          "- o que Alberto tem na agenda amanhã?"
             }
             
     except Exception as e:
