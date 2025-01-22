@@ -5,10 +5,25 @@ import os
 import pytz
 from dateutil import parser
 
-client = OpenAI(api_key=os.environ.get('OPENAI_API_KEY'))
+# Inicializa o cliente OpenAI de forma mais segura
+api_key = os.environ.get('OPENAI_API_KEY')
+if not api_key:
+    raise ValueError("OPENAI_API_KEY não encontrada nas variáveis de ambiente")
+
+try:
+    client = OpenAI(api_key=api_key)
+except Exception as e:
+    print(f"Erro ao inicializar OpenAI: {e}")
+    client = None
 
 def processar_comando(texto, service):
     """Processa o comando do usuário usando GPT"""
+    if not client:
+        return {
+            "status": "erro",
+            "mensagem": "Serviço OpenAI não está disponível"
+        }
+
     try:
         resposta = client.chat.completions.create(
             model="gpt-3.5-turbo",
