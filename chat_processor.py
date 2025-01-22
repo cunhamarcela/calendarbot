@@ -4,6 +4,7 @@ import pytz
 from dateutil import parser
 from dateutil.relativedelta import relativedelta
 from config import PESSOAS, LOCAIS, DURACOES, HORARIO_COMERCIAL
+from prompts import CONSULTAS, CRIACAO, ERROS, EXEMPLOS_USO
 
 def extrair_data_hora(texto):
     """Extrai data e hora do texto"""
@@ -141,148 +142,155 @@ def sugerir_horario(service, data, duracao=60):
     return None
 
 def processar_comando(texto, service):
-    """Processa comandos em linguagem natural"""
-    texto = texto.lower()
+    """Processa comandos usando padrões fixos"""
+    texto = texto.lower().strip()
     
     try:
-        # Verifica se é um comando de criação
-        if any(palavra in texto for palavra in ['crie', 'agende', 'marque', 'criar', 'agendar', 'marcar']):
-            # Extrai título do evento
-            match_titulo = re.search(r'chamado\s+(.+?)(?:\s+(?:dia|às|as|no dia|em|para)|$)', texto)
-            if not match_titulo:
-                match_titulo = re.search(r'(?:crie|agende|marque)\s+(?:uma|um)?\s*(.+?)(?:\s+(?:dia|às|as|no dia|em|para)|$)', texto)
-            
-            if not match_titulo:
-                return {
-                    "status": "erro",
-                    "mensagem": "Não consegui entender o título do evento"
-                }
-            
-            titulo = match_titulo.group(1).strip()
-            data_hora = extrair_data_hora(texto)
-            
-            if not data_hora:
-                return {
-                    "status": "erro",
-                    "mensagem": "Não consegui entender a data e hora do evento"
-                }
-            
-            # Adiciona sugestão de horário se não especificado
-            if not data_hora:
+        # Primeiro tenta extrair data específica
+        match_data = re.search(r'dia (\d{1,2}/\d{1,2}(?:/\d{4})?)', texto)
+        if not match_data:
+            match_data = re.search(r'(\d{1,2}/\d{1,2}(?:/\d{4})?)', texto)
+        
+        data = None
+        if match_data:
+            data_texto = match_data.group(1)
+            if len(data_texto.split('/')) == 2:
+                data_texto += f"/{datetime.now().year}"
+            try:
+                data = datetime.strptime(data_texto, '%d/%m/%Y')
+                data = pytz.timezone('America/Sao_Paulo').localize(data)
+            except ValueError:
+                return {"status": "erro", "mensagem": ERROS['data_invalida']}
+        elif 'amanhã' in texto:
+            data = datetime.now(pytz.timezone('America/Sao_Paulo')) + timedelta(days=1)
+        elif 'hoje' in texto:
+            data = datetime.now(pytz.timezone('America/Sao_Paulo'))
+        
+        # Verifica se é uma consulta
+        if any(palavra in texto for palavra in ['agenda', 'eventos', 'compromissos', 'o que tem']):
+            if not data:
                 data = datetime.now(pytz.timezone('America/Sao_Paulo'))
-                if 'amanhã' in texto:
-                    data += timedelta(days=1)
-                
-                # Determina duração baseado no tipo de evento
-                duracao = 60
-                for tipo, dur in DURACOES.items():
-                    if tipo in texto:
-                        duracao = dur
-                        break
-                
-                data_hora = sugerir_horario(service, data, duracao)
-                if not data_hora:
-                    return {
-                        "status": "erro",
-                        "mensagem": "Não encontrei horários livres para hoje/amanhã. Tente especificar outra data."
-                    }
+            return consultar_agenda(service, data, texto)
+        
+        # Verifica se é uma criação de evento
+        if any(palavra in texto for palavra in ['criar', 'agendar', 'marcar']):
+            match = re.search(r'(?:criar|agendar|marcar)\s+(?:evento\s+)?(.+?)\s+(?:no\s+(\w+)\s+)?(?:dia\s+)?(\d{1,2}/\d{1,2}(?:/\d{4})?)\s+(?:às|as)\s+(\d{1,2}:\d{2})', texto)
+            if match:
+                titulo = match.group(1)
+                local = match.group(2)
+                data_texto = match.group(3)
+                hora = match.group(4)
+                return criar_evento(service, titulo, data_texto, hora, local)
+        
+        return {"status": "erro", "mensagem": ERROS['comando_invalido']}
+        
+    except Exception as e:
+        return {"status": "erro", "mensagem": str(e)}
+
+def criar_evento(service, titulo, data_texto, hora, local):
+    """Cria um novo evento"""
+    try:
+        data = datetime.strptime(data_texto, '%d/%m/%Y')
+        data = pytz.timezone('America/Sao_Paulo').localize(data)
+        hora = datetime.strptime(hora, '%H:%M').time()
+        
+        # Adiciona sugestão de horário se não especificado
+        if not data:
+            data = datetime.now(pytz.timezone('America/Sao_Paulo'))
+            if 'amanhã' in data_texto:
+                data += timedelta(days=1)
             
-            # Identifica local do evento
-            local = None
-            for nome_local, endereco in LOCAIS.items():
-                if nome_local in texto:
-                    local = endereco
+            # Determina duração baseado no tipo de evento
+            duracao = 60
+            for tipo, dur in DURACOES.items():
+                if tipo in data_texto:
+                    duracao = dur
                     break
             
-            # Cria o evento
-            evento = {
-                'summary': titulo,
-                'location': local,
-                'start': {
-                    'dateTime': data_hora.isoformat(),
-                    'timeZone': 'America/Sao_Paulo',
-                },
-                'end': {
-                    'dateTime': (data_hora + timedelta(minutes=duracao)).isoformat(),
-                    'timeZone': 'America/Sao_Paulo',
-                }
-            }
-            
-            evento_criado = service.events().insert(
-                calendarId='primary',
-                body=evento
-            ).execute()
-            
-            return {
-                "status": "sucesso",
-                "mensagem": f"Evento '{titulo}' criado para {data_hora.strftime('%d/%m/%Y às %H:%M')}",
-                "link": evento_criado['htmlLink']
-            }
-            
-        # Verifica se é um comando de consulta
-        elif any(palavra in texto for palavra in ['mostre', 'liste', 'quais', 'tem', 'há', 'consulte', 'livre']):
-            # Extrai a data do comando
-            data = extrair_data_hora(texto)
+            data = sugerir_horario(service, data, duracao)
             if not data:
-                # Se não encontrou data específica, assume hoje
-                data = datetime.now(pytz.timezone('America/Sao_Paulo'))
-            
-            # Ajusta para início e fim do dia especificado
-            inicio = data.replace(hour=0, minute=0, second=0, microsecond=0)
-            fim = data.replace(hour=23, minute=59, second=59, microsecond=999999)
-            
-            # Extrai email/calendário a ser consultado
-            calendar_id = extrair_email(texto)
-            
-            try:
-                events_result = service.events().list(
-                    calendarId=calendar_id,
-                    timeMin=inicio.isoformat(),  # Usa a data extraída do comando
-                    timeMax=fim.isoformat(),     # Usa a data extraída do comando
-                    singleEvents=True,
-                    orderBy='startTime'
-                ).execute()
-                
-                events = events_result.get('items', [])
-                
-                if not events:
-                    nome_agenda = "sua agenda" if calendar_id == 'primary' else f"agenda de {calendar_id.split('@')[0]}"
-                    return {
-                        "status": "sucesso",
-                        "mensagem": f"Nenhum evento encontrado em {nome_agenda} para {data.strftime('%d/%m/%Y')}"
-                    }
-                
-                eventos_formatados = []
-                for event in events:
-                    start = event['start'].get('dateTime', event['start'].get('date'))
-                    start_time = parser.parse(start).strftime('%H:%M')
-                    eventos_formatados.append(f"- {start_time}: {event['summary']}")
-                
-                nome_agenda = "sua agenda" if calendar_id == 'primary' else f"agenda de {calendar_id.split('@')[0]}"
                 return {
-                    "status": "sucesso",
-                    "mensagem": f"Eventos em {nome_agenda} para {data.strftime('%d/%m/%Y')}:\n" + "\n".join(eventos_formatados)
+                    "status": "erro",
+                    "mensagem": "Não encontrei horários livres para hoje/amanhã. Tente especificar outra data."
                 }
-                
-            except Exception as e:
-                if 'Not Found' in str(e):
-                    return {
-                        "status": "erro",
-                        "mensagem": f"Não tenho acesso à agenda de {calendar_id}"
-                    }
-                raise e
-            
-        else:
-            return {
-                "status": "erro",
-                "mensagem": "Desculpe, não entendi o comando. Tente algo como:\n" +
-                          "- crie uma reunião amanhã às 15h\n" +
-                          "- mostre meus eventos de hoje\n" +
-                          "- o que Alberto tem na agenda amanhã?"
+        
+        # Identifica local do evento
+        local = local if local else None
+        
+        # Cria o evento
+        evento = {
+            'summary': titulo,
+            'location': local,
+            'start': {
+                'dateTime': data.isoformat(),
+                'timeZone': 'America/Sao_Paulo',
+            },
+            'end': {
+                'dateTime': (data + timedelta(minutes=duracao)).isoformat(),
+                'timeZone': 'America/Sao_Paulo',
             }
-            
+        }
+        
+        evento_criado = service.events().insert(
+            calendarId='primary',
+            body=evento
+        ).execute()
+        
+        return {
+            "status": "sucesso",
+            "mensagem": f"Evento '{titulo}' criado para {data.strftime('%d/%m/%Y às %H:%M')}",
+            "link": evento_criado['htmlLink']
+        }
+        
     except Exception as e:
         return {
             "status": "erro",
-            "mensagem": f"Erro ao processar comando: {str(e)}"
-        } 
+            "mensagem": f"Erro ao criar evento: {str(e)}"
+        }
+
+def consultar_agenda(service, data, texto):
+    """Consulta a agenda do usuário"""
+    try:
+        # Ajusta para início e fim do dia especificado
+        inicio = data.replace(hour=0, minute=0, second=0, microsecond=0)
+        fim = data.replace(hour=23, minute=59, second=59, microsecond=999999)
+        
+        # Extrai email/calendário a ser consultado
+        calendar_id = extrair_email(texto)
+        
+        events_result = service.events().list(
+            calendarId=calendar_id,
+            timeMin=inicio.isoformat(),  # Usa a data extraída do comando
+            timeMax=fim.isoformat(),     # Usa a data extraída do comando
+            singleEvents=True,
+            orderBy='startTime'
+        ).execute()
+        
+        events = events_result.get('items', [])
+        
+        if not events:
+            nome_agenda = "sua agenda" if calendar_id == 'primary' else f"agenda de {calendar_id.split('@')[0]}"
+            return {
+                "status": "sucesso",
+                "mensagem": f"Nenhum evento encontrado em {nome_agenda} para {data.strftime('%d/%m/%Y')}"
+            }
+        
+        eventos_formatados = []
+        for event in events:
+            start = event['start'].get('dateTime', event['start'].get('date'))
+            start_time = parser.parse(start).strftime('%H:%M')
+            eventos_formatados.append(f"- {start_time}: {event['summary']}")
+        
+        nome_agenda = "sua agenda" if calendar_id == 'primary' else f"agenda de {calendar_id.split('@')[0]}"
+        return {
+            "status": "sucesso",
+            "mensagem": f"Eventos em {nome_agenda} para {data.strftime('%d/%m/%Y')}:\n" + "\n".join(eventos_formatados)
+        }
+        
+    except Exception as e:
+        if 'Not Found' in str(e):
+            return {
+                "status": "erro",
+                "mensagem": f"Não tenho acesso à agenda de {calendar_id}"
+            }
+        raise e 
