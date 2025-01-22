@@ -1,6 +1,8 @@
 from flask import Flask, request, jsonify, render_template
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
+from google.oauth2.credentials import Credentials
+import json
 import os
 
 # Configurações de ambiente
@@ -14,25 +16,57 @@ SCOPES = ['https://www.googleapis.com/auth/calendar']
 # Serviço de autenticação global
 service = None
 
+def salvar_credenciais(creds):
+    """Salva as credenciais em um arquivo"""
+    creds_data = {
+        'token': creds.token,
+        'refresh_token': creds.refresh_token,
+        'token_uri': creds.token_uri,
+        'client_id': creds.client_id,
+        'client_secret': creds.client_secret,
+        'scopes': creds.scopes
+    }
+    with open('token.json', 'w') as token:
+        json.dump(creds_data, token)
+
+def carregar_credenciais():
+    """Carrega credenciais salvas"""
+    try:
+        with open('token.json', 'r') as token:
+            creds_data = json.load(token)
+            return Credentials.from_authorized_user_info(creds_data, SCOPES)
+    except Exception:
+        return None
+
 # Função para autenticar na Google API
 def autenticar():
     try:
-        flow = InstalledAppFlow.from_client_secrets_file(
-            'credentials.json',
-            SCOPES,
-            redirect_uri=os.environ.get('REDIRECT_URI', 'http://localhost:8080/oauth2callback')
-        )
-        creds = flow.run_console()
+        # Tenta carregar credenciais existentes
+        creds = carregar_credenciais()
+        
+        if not creds or not creds.valid:
+            if creds and creds.expired and creds.refresh_token:
+                creds.refresh(Request())
+            else:
+                flow = InstalledAppFlow.from_client_secrets_file(
+                    'credentials.json',
+                    SCOPES,
+                    redirect_uri=os.environ.get('REDIRECT_URI', 'http://localhost:8080/oauth2callback')
+                )
+                creds = flow.run_console()
+                salvar_credenciais(creds)
+        
         return build('calendar', 'v3', credentials=creds)
     except Exception as e:
         print(f"Erro ao autenticar: {e}")
         raise e
 
-# Inicializa o serviço durante o início do app
-def initialize_service():
+def get_service():
+    """Retorna o serviço, inicializando se necessário"""
     global service
     if service is None:
         service = autenticar()
+    return service
 
 # Rota inicial
 @app.route('/')
@@ -42,9 +76,9 @@ def home():
 # Endpoint para listar eventos
 @app.route('/listar', methods=['GET'])
 def listar_eventos():
-    global service
     try:
-        events_result = service.events().list(
+        current_service = get_service()
+        events_result = current_service.events().list(
             calendarId='primary', maxResults=10, singleEvents=True, orderBy='startTime'
         ).execute()
         events = events_result.get('items', [])
@@ -61,7 +95,6 @@ def listar_eventos():
 # Endpoint para criar um evento
 @app.route('/criar', methods=['POST'])
 def criar_evento():
-    global service
     try:
         data = request.json
 
@@ -69,6 +102,7 @@ def criar_evento():
         if not all(k in data for k in ("summary", "location", "start", "end", "attendees")):
             return jsonify({"error": "Dados incompletos na requisição"}), 400
 
+        current_service = get_service()
         evento = {
             'summary': data['summary'],
             'location': data['location'],
@@ -83,17 +117,22 @@ def criar_evento():
             'attendees': [{'email': email} for email in data['attendees']],
         }
 
-        evento_criado = service.events().insert(calendarId='primary', body=evento).execute()
+        evento_criado = current_service.events().insert(calendarId='primary', body=evento).execute()
         return jsonify({"message": "Evento criado!", "link": evento_criado['htmlLink']})
     
     except Exception as e:
         print(f"Erro no endpoint /criar: {e}")
         return jsonify({"error": str(e)}), 500
 
-if __name__ == '__main__':
-    # Inicializa o serviço antes de iniciar o servidor
-    initialize_service()
+# Rota para iniciar autenticação
+@app.route('/auth')
+def auth():
+    try:
+        get_service()
+        return jsonify({"message": "Autenticação realizada com sucesso!"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
-    # Para desenvolvimento local
+if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port, debug=True)
