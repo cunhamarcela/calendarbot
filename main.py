@@ -8,6 +8,7 @@ import os
 import pathlib
 from datetime import datetime, timedelta
 import pytz
+from chat_processor import processar_comando
 
 # Configurações de ambiente
 os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
@@ -313,6 +314,27 @@ def criar_evento():
                 "tipo": type(e).__name__,
                 "mensagem": erro_msg
             }
+        }), 500
+
+# Endpoint para processar comandos do chat
+@app.route('/chat', methods=['POST'])
+def chat():
+    current_service = get_service()
+    if current_service is None:
+        reset_service()
+        return jsonify({
+            "status": "erro",
+            "mensagem": "Autenticação necessária"
+        }), 401
+    
+    try:
+        comando = request.json['comando']
+        resultado = processar_comando(comando, current_service)
+        return jsonify(resultado)
+    except Exception as e:
+        return jsonify({
+            "status": "erro",
+            "mensagem": f"Erro no processamento: {str(e)}"
         }), 500
 
 if __name__ == '__main__':
