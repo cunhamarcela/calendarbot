@@ -185,8 +185,8 @@ def verificar_disponibilidade(service, calendar_id, inicio, fim):
                         hora_atual += timedelta(minutes=30)
             
             dia_atual += timedelta(days=1)
-            
-        return horarios_livres
+        
+        return horarios_livres[:20]  # Retorna os 20 primeiros horários
     
     except Exception as e:
         print(f"Erro ao verificar disponibilidade: {e}")
@@ -197,6 +197,41 @@ def processar_comando(texto, service):
     texto = texto.lower().strip()
     
     try:
+        # Verifica se é consulta de outra pessoa
+        if 'o que o' in texto or 'agenda do' in texto:
+            # Extrai a pessoa
+            pessoa = None
+            for nome in PESSOAS.keys():
+                if nome in texto:
+                    pessoa = nome
+                    break
+            
+            if not pessoa:
+                return {
+                    "status": "erro",
+                    "mensagem": "Pessoa não encontrada na lista de contatos."
+                }
+            
+            calendar_id = PESSOAS[pessoa]
+            
+            # Determina a data
+            if 'hoje' in texto:
+                data = datetime.now(pytz.timezone('America/Sao_Paulo'))
+            elif 'amanhã' in texto:
+                data = datetime.now(pytz.timezone('America/Sao_Paulo')) + timedelta(days=1)
+            else:
+                match = re.search(r'dia (\d{1,2}/\d{1,2}(?:/\d{4})?)', texto)
+                if match:
+                    data_texto = match.group(1)
+                    if len(data_texto.split('/')) == 2:
+                        data_texto += f"/{datetime.now().year}"
+                    data = datetime.strptime(data_texto, '%d/%m/%Y')
+                    data = pytz.timezone('America/Sao_Paulo').localize(data)
+                else:
+                    data = datetime.now(pytz.timezone('America/Sao_Paulo'))
+            
+            return consultar_agenda(service, data, texto)
+
         # Verifica se é consulta de disponibilidade
         if any(palavra in texto for palavra in ['livre', 'disponibilidade', 'quando']):
             # Determina o período
@@ -250,46 +285,7 @@ def processar_comando(texto, service):
                     "mensagem": f"Pessoa '{pessoa}' não encontrada na lista de contatos."
                 }
             
-            # Cria o evento com a pessoa como participante
-            evento = criar_evento(service, tipo, data, hora, None)
-            if evento['status'] == 'sucesso':
-                # Adiciona a pessoa como participante
-                evento_id = evento['link'].split('eid=')[1]
-                evento_atualizado = service.events().get(calendarId='primary', eventId=evento_id).execute()
-                evento_atualizado['attendees'] = [{'email': email}]
-                
-                service.events().update(
-                    calendarId='primary',
-                    eventId=evento_id,
-                    body=evento_atualizado,
-                    sendUpdates='all'
-                ).execute()
-                
-                return {
-                    "status": "sucesso",
-                    "mensagem": f"Evento '{tipo}' criado e convite enviado para {pessoa}"
-                }
-            return evento
-        
-        # Primeiro tenta extrair data específica
-        match_data = re.search(r'dia (\d{1,2}/\d{1,2}(?:/\d{4})?)', texto)
-        if not match_data:
-            match_data = re.search(r'(\d{1,2}/\d{1,2}(?:/\d{4})?)', texto)
-        
-        data = None
-        if match_data:
-            data_texto = match_data.group(1)
-            if len(data_texto.split('/')) == 2:
-                data_texto += f"/{datetime.now().year}"
-            try:
-                data = datetime.strptime(data_texto, '%d/%m/%Y')
-                data = pytz.timezone('America/Sao_Paulo').localize(data)
-            except ValueError:
-                return {"status": "erro", "mensagem": ERROS['data_invalida']}
-        elif 'amanhã' in texto:
-            data = datetime.now(pytz.timezone('America/Sao_Paulo')) + timedelta(days=1)
-        elif 'hoje' in texto:
-            data = datetime.now(pytz.timezone('America/Sao_Paulo'))
+            return criar_evento(service, tipo, data, hora, None, [email])
         
         # Verifica se é uma consulta
         if any(palavra in texto for palavra in ['agenda', 'eventos', 'compromissos', 'o que tem']):
@@ -312,7 +308,7 @@ def processar_comando(texto, service):
     except Exception as e:
         return {"status": "erro", "mensagem": str(e)}
 
-def criar_evento(service, titulo, data_texto, hora, local):
+def criar_evento(service, titulo, data_texto, hora, local=None, participantes=None):
     """Cria um novo evento"""
     try:
         # Determina duração baseado no tipo de evento
@@ -354,6 +350,10 @@ def criar_evento(service, titulo, data_texto, hora, local):
             }
         }
         
+        # Adiciona participantes se especificados
+        if participantes:
+            evento['attendees'] = [{'email': email} for email in participantes]
+        
         evento_criado = service.events().insert(
             calendarId='primary',
             body=evento,
@@ -363,10 +363,11 @@ def criar_evento(service, titulo, data_texto, hora, local):
         # Formata a mensagem de retorno
         msg_local = f" no {local}" if local else ""
         msg_duracao = f" ({duracao} minutos)" if duracao != 60 else ""
+        msg_participantes = f" com {', '.join(participantes)}" if participantes else ""
         
         return {
             "status": "sucesso",
-            "mensagem": f"Evento '{titulo}'{msg_local} criado para {data.strftime('%d/%m/%Y às %H:%M')}{msg_duracao}",
+            "mensagem": f"Evento '{titulo}'{msg_local}{msg_participantes} criado para {data.strftime('%d/%m/%Y às %H:%M')}{msg_duracao}",
             "link": evento_criado['htmlLink']
         }
         
