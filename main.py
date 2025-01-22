@@ -22,15 +22,13 @@ def autenticar():
             SCOPES,
             redirect_uri=os.environ.get('REDIRECT_URI', 'http://localhost:8080/oauth2callback')
         )
-        # Use run_console() para ambientes de produção
         creds = flow.run_console()
         return build('calendar', 'v3', credentials=creds)
     except Exception as e:
         print(f"Erro ao autenticar: {e}")
         raise e
 
-# Inicializa o serviço na primeira requisição
-@app.before_first_request
+# Inicializa o serviço durante o início do app
 def initialize_service():
     global service
     if service is None:
@@ -93,6 +91,9 @@ def criar_evento():
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
+    # Inicializa o serviço antes de iniciar o servidor
+    initialize_service()
+
     # Para desenvolvimento local
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port, debug=True)
