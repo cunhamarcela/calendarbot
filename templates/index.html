@@ -3,11 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Google Calendar Manager</title>
+    <title>Gerenciador de Agenda Google</title>
     <style>
         body {
             font-family: Arial, sans-serif;
-            max-width: 800px;
+            max-width: 1200px;
             margin: 0 auto;
             padding: 20px;
             background-color: #f0f0f0;
@@ -17,9 +17,7 @@
             padding: 20px;
             border-radius: 8px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        .event-form {
-            margin-bottom: 30px;
+            margin-bottom: 20px;
         }
         .form-group {
             margin-bottom: 15px;
@@ -29,7 +27,7 @@
             margin-bottom: 5px;
             font-weight: bold;
         }
-        input, textarea {
+        input, select {
             width: 100%;
             padding: 8px;
             border: 1px solid #ddd;
@@ -47,12 +45,20 @@
         button:hover {
             background-color: #357abd;
         }
-        .events-list {
+        .event-list {
             margin-top: 20px;
         }
         .event-item {
-            padding: 10px;
-            border-bottom: 1px solid #ddd;
+            background-color: #f8f9fa;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+            border-left: 4px solid #4285f4;
+        }
+        .filters {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
         }
         .error {
             color: red;
@@ -64,104 +70,170 @@
     <div class="container">
         <h1>Gerenciador de Agenda Google</h1>
         
-        <div class="event-form">
-            <h2>Criar Novo Evento</h2>
-            <form id="createEventForm">
-                <div class="form-group">
-                    <label for="summary">Título:</label>
-                    <input type="text" id="summary" required>
-                </div>
-                <div class="form-group">
-                    <label for="location">Local:</label>
-                    <input type="text" id="location">
-                </div>
-                <div class="form-group">
-                    <label for="start">Data/Hora Início:</label>
-                    <input type="datetime-local" id="start" required>
-                </div>
-                <div class="form-group">
-                    <label for="end">Data/Hora Fim:</label>
-                    <input type="datetime-local" id="end" required>
-                </div>
-                <div class="form-group">
-                    <label for="attendees">Participantes (emails separados por vírgula):</label>
-                    <input type="text" id="attendees" placeholder="email1@exemplo.com, email2@exemplo.com">
-                </div>
-                <button type="submit">Criar Evento</button>
-            </form>
+        <!-- Filtros -->
+        <div class="filters">
+            <div class="form-group">
+                <label for="calendar-select">Calendário:</label>
+                <select id="calendar-select" onchange="listarEventos(this.value)">
+                    <option value="primary">Meu Calendário</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="date-filter">Data:</label>
+                <input type="date" id="date-filter" onchange="filtrarPorData(this.value)">
+            </div>
         </div>
 
-        <div class="events-list">
-            <h2>Próximos Eventos</h2>
-            <button onclick="loadEvents()">Atualizar Lista</button>
-            <div id="eventsList"></div>
+        <!-- Lista de Eventos -->
+        <h2>Eventos</h2>
+        <div id="event-list" class="event-list">
+            <p>Carregando eventos...</p>
         </div>
     </div>
 
+    <!-- Formulário de Criação -->
+    <div class="container">
+        <h2>Criar Novo Evento</h2>
+        <form id="createEventForm" onsubmit="criarEvento(event)">
+            <div class="form-group">
+                <label for="summary">Título:</label>
+                <input type="text" id="summary" required>
+            </div>
+            <div class="form-group">
+                <label for="location">Local:</label>
+                <input type="text" id="location" required>
+            </div>
+            <div class="form-group">
+                <label for="start">Início:</label>
+                <input type="datetime-local" id="start" required>
+            </div>
+            <div class="form-group">
+                <label for="end">Fim:</label>
+                <input type="datetime-local" id="end" required>
+            </div>
+            <div class="form-group">
+                <label for="attendees">Participantes (emails separados por vírgula):</label>
+                <input type="text" id="attendees" placeholder="email1@exemplo.com, email2@exemplo.com">
+            </div>
+            <button type="submit">Criar Evento</button>
+        </form>
+    </div>
+
     <script>
-        // Carregar eventos ao iniciar a página
-        document.addEventListener('DOMContentLoaded', loadEvents);
-
-        // Função para carregar eventos
-        function loadEvents() {
-            fetch('/listar')
-                .then(response => response.json())
-                .then(data => {
-                    const eventsDiv = document.getElementById('eventsList');
-                    eventsDiv.innerHTML = '';
+        // Carrega calendários disponíveis
+        async function carregarCalendarios() {
+            try {
+                const response = await fetch('/calendarios');
+                const data = await response.json();
+                
+                if (response.ok) {
+                    const select = document.getElementById('calendar-select');
+                    select.innerHTML = '<option value="primary">Meu Calendário</option>';
                     
-                    if (data.message) {
-                        eventsDiv.innerHTML = `<p>${data.message}</p>`;
-                        return;
-                    }
-
-                    data.events.forEach(event => {
-                        const eventDiv = document.createElement('div');
-                        eventDiv.className = 'event-item';
-                        eventDiv.innerHTML = `
-                            <strong>${event.summary}</strong><br>
-                            ${new Date(event.start).toLocaleString()}
-                        `;
-                        eventsDiv.appendChild(eventDiv);
+                    data.calendarios.forEach(cal => {
+                        if (!cal.primary) {
+                            select.innerHTML += `
+                                <option value="${cal.id}">${cal.summary}</option>
+                            `;
+                        }
                     });
-                })
-                .catch(error => console.error('Erro ao carregar eventos:', error));
+                }
+            } catch (error) {
+                console.error('Erro ao carregar calendários:', error);
+            }
         }
 
-        // Manipular envio do formulário
-        document.getElementById('createEventForm').addEventListener('submit', function(e) {
-            e.preventDefault();
+        // Lista eventos
+        async function listarEventos(calendarId = 'primary', dataInicio = null, dataFim = null) {
+            try {
+                let url = '/listar?email=' + calendarId;
+                if (dataInicio) {
+                    const inicio = new Date(dataInicio);
+                    inicio.setHours(0, 0, 0);
+                    const fim = new Date(dataInicio);
+                    fim.setHours(23, 59, 59);
+                    
+                    url += `&inicio=${inicio.toISOString()}&fim=${fim.toISOString()}`;
+                }
+                
+                const response = await fetch(url);
+                const data = await response.json();
+                
+                const eventList = document.getElementById('event-list');
+                if (response.ok) {
+                    if (data.message) {
+                        eventList.innerHTML = `<p>${data.message}</p>`;
+                        return;
+                    }
+                    
+                    eventList.innerHTML = data.events.map(event => `
+                        <div class="event-item">
+                            <h3>${event.summary}</h3>
+                            <p>Início: ${new Date(event.start).toLocaleString()}</p>
+                            <p>Fim: ${new Date(event.end).toLocaleString()}</p>
+                            <p>Local: ${event.location || 'Não especificado'}</p>
+                            <p>Participantes: ${event.attendees.join(', ') || 'Nenhum'}</p>
+                            <a href="${event.link}" target="_blank">Ver no Google Calendar</a>
+                        </div>
+                    `).join('');
+                } else {
+                    eventList.innerHTML = `<p class="error">Erro: ${data.error}</p>`;
+                }
+            } catch (error) {
+                console.error('Erro ao listar eventos:', error);
+                document.getElementById('event-list').innerHTML = `
+                    <p class="error">Erro ao carregar eventos: ${error.message}</p>
+                `;
+            }
+        }
+
+        // Filtrar por data
+        function filtrarPorData(data) {
+            const calendarId = document.getElementById('calendar-select').value;
+            listarEventos(calendarId, data);
+        }
+
+        // Criar evento
+        async function criarEvento(event) {
+            event.preventDefault();
             
-            const attendeesArray = document.getElementById('attendees').value
-                .split(',')
-                .map(email => email.trim())
-                .filter(email => email);
-
-            const eventData = {
-                summary: document.getElementById('summary').value,
-                location: document.getElementById('location').value,
-                start: document.getElementById('start').value + ':00Z',
-                end: document.getElementById('end').value + ':00Z',
-                attendees: attendeesArray
+            const form = event.target;
+            const data = {
+                summary: form.summary.value,
+                location: form.location.value,
+                start: new Date(form.start.value).toISOString(),
+                end: new Date(form.end.value).toISOString(),
+                attendees: form.attendees.value.split(',').map(email => email.trim()).filter(Boolean)
             };
-
-            fetch('/criar', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(eventData)
-            })
-            .then(response => response.json())
-            .then(data => {
-                alert(data.message);
-                loadEvents();
-                document.getElementById('createEventForm').reset();
-            })
-            .catch(error => {
+            
+            try {
+                const response = await fetch('/criar', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(data)
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    alert(`Evento criado com sucesso!\nTítulo: ${result.detalhes.titulo}\nInício: ${new Date(result.detalhes.inicio).toLocaleString()}`);
+                    form.reset();
+                    listarEventos();
+                } else {
+                    alert(`Erro ao criar evento: ${result.error}`);
+                }
+            } catch (error) {
                 console.error('Erro ao criar evento:', error);
-                alert('Erro ao criar evento');
-            });
+                alert('Erro ao criar evento: ' + error.message);
+            }
+        }
+
+        // Inicialização
+        document.addEventListener('DOMContentLoaded', () => {
+            carregarCalendarios();
+            listarEventos();
         });
     </script>
 </body>
