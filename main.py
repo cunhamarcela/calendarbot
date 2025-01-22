@@ -189,6 +189,7 @@ def criar_evento():
                 "status": "erro"
             }), 400
 
+        # Ajusta o fuso horário para Brasília
         evento = {
             'summary': data['summary'],
             'location': data['location'],
@@ -201,9 +202,28 @@ def criar_evento():
                 'timeZone': 'America/Sao_Paulo',
             },
             'attendees': [{'email': email} for email in data['attendees']],
+            # Adiciona configurações de fuso horário
+            'reminders': {
+                'useDefault': False,
+                'overrides': [
+                    {'method': 'email', 'minutes': 24 * 60},
+                    {'method': 'popup', 'minutes': 30},
+                ],
+            },
+            # Força o fuso horário do evento
+            'timeZone': 'America/Sao_Paulo'
         }
 
-        evento_criado = current_service.events().insert(calendarId='primary', body=evento).execute()
+        evento_criado = current_service.events().insert(
+            calendarId='primary',
+            body=evento,
+            # Adiciona parâmetro para garantir o fuso horário
+            timeZone='America/Sao_Paulo'
+        ).execute()
+        
+        # Formata as datas para exibição
+        inicio = evento_criado['start'].get('dateTime')
+        fim = evento_criado['end'].get('dateTime')
         
         return jsonify({
             "message": "Evento criado com sucesso!",
@@ -211,8 +231,9 @@ def criar_evento():
             "detalhes": {
                 "id": evento_criado['id'],
                 "titulo": evento_criado['summary'],
-                "inicio": evento_criado['start']['dateTime'],
-                "fim": evento_criado['end']['dateTime'],
+                "inicio": inicio,
+                "fim": fim,
+                "fuso_horario": "America/Sao_Paulo",
                 "participantes": [att['email'] for att in evento_criado.get('attendees', [])]
             },
             "status": "sucesso"
@@ -221,7 +242,7 @@ def criar_evento():
     except Exception as e:
         erro_msg = str(e)
         print(f"Erro no endpoint /criar: {erro_msg}")
-        reset_service()  # Reseta o serviço em caso de erro
+        reset_service()
         return jsonify({
             "error": f"Erro ao criar evento: {erro_msg}",
             "status": "erro",
