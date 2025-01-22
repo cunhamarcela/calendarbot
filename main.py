@@ -18,16 +18,12 @@ service = None
 # Função para autenticar na Google API
 def autenticar():
     flow = InstalledAppFlow.from_client_secrets_file(
-        'credentials.json', 
-        SCOPES,
-        redirect_uri='http://localhost:8080/oauth2callback'
+        'credentials.json', SCOPES
     )
-    creds = flow.run_local_server(
-        port=8080,
-        access_type='offline',
-        include_granted_scopes=True
-    )
+    # Use run_console() para ambientes sem navegador
+    creds = flow.run_console()
     return build('calendar', 'v3', credentials=creds)
+
 
 # Rota inicial
 @app.route('/')
