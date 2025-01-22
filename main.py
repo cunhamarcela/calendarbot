@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify, render_template
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from google.oauth2.credentials import Credentials
+from google.auth.transport.requests import Request
 import json
 import os
 
@@ -18,16 +19,21 @@ service = None
 
 def salvar_credenciais(creds):
     """Salva as credenciais em um arquivo"""
-    creds_data = {
-        'token': creds.token,
-        'refresh_token': creds.refresh_token,
-        'token_uri': creds.token_uri,
-        'client_id': creds.client_id,
-        'client_secret': creds.client_secret,
-        'scopes': creds.scopes
-    }
-    with open('token.json', 'w') as token:
-        json.dump(creds_data, token)
+    try:
+        creds_data = {
+            'token': creds.token,
+            'refresh_token': creds.refresh_token,
+            'token_uri': creds.token_uri,
+            'client_id': creds.client_id,
+            'client_secret': creds.client_secret,
+            'scopes': creds.scopes
+        }
+        with open('token.json', 'w') as token:
+            json.dump(creds_data, token)
+        return True
+    except Exception as e:
+        print(f"Erro ao salvar credenciais: {e}")
+        return False
 
 def carregar_credenciais():
     """Carrega credenciais salvas"""
@@ -35,7 +41,8 @@ def carregar_credenciais():
         with open('token.json', 'r') as token:
             creds_data = json.load(token)
             return Credentials.from_authorized_user_info(creds_data, SCOPES)
-    except Exception:
+    except Exception as e:
+        print(f"Erro ao carregar credenciais: {e}")
         return None
 
 # Função para autenticar na Google API
@@ -53,8 +60,9 @@ def autenticar():
                     SCOPES,
                     redirect_uri=os.environ.get('REDIRECT_URI', 'http://localhost:8080/oauth2callback')
                 )
-                creds = flow.run_console()
-                salvar_credenciais(creds)
+                creds = flow.run_local_server(port=0)
+                if not salvar_credenciais(creds):
+                    raise Exception("Falha ao salvar credenciais")
         
         return build('calendar', 'v3', credentials=creds)
     except Exception as e:
@@ -90,7 +98,7 @@ def listar_eventos():
         ]})
     except Exception as e:
         print(f"Erro no endpoint /listar: {e}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": f"Erro ao listar eventos: {str(e)}"}), 500
 
 # Endpoint para criar um evento
 @app.route('/criar', methods=['POST'])
@@ -99,8 +107,15 @@ def criar_evento():
         data = request.json
 
         # Validar dados recebidos
-        if not all(k in data for k in ("summary", "location", "start", "end", "attendees")):
-            return jsonify({"error": "Dados incompletos na requisição"}), 400
+        campos_obrigatorios = ["summary", "location", "start", "end", "attendees"]
+        campos_faltantes = [campo for campo in campos_obrigatorios if campo not in data]
+        
+        if campos_faltantes:
+            return jsonify({
+                "error": "Dados incompletos na requisição",
+                "campos_faltantes": campos_faltantes,
+                "status": "erro"
+            }), 400
 
         current_service = get_service()
         evento = {
@@ -118,20 +133,46 @@ def criar_evento():
         }
 
         evento_criado = current_service.events().insert(calendarId='primary', body=evento).execute()
-        return jsonify({"message": "Evento criado!", "link": evento_criado['htmlLink']})
+        
+        return jsonify({
+            "message": "Evento criado com sucesso!",
+            "link": evento_criado['htmlLink'],
+            "detalhes": {
+                "id": evento_criado['id'],
+                "titulo": evento_criado['summary'],
+                "inicio": evento_criado['start']['dateTime'],
+                "fim": evento_criado['end']['dateTime'],
+                "participantes": [att['email'] for att in evento_criado.get('attendees', [])]
+            },
+            "status": "sucesso"
+        })
     
     except Exception as e:
-        print(f"Erro no endpoint /criar: {e}")
-        return jsonify({"error": str(e)}), 500
+        erro_msg = str(e)
+        print(f"Erro no endpoint /criar: {erro_msg}")
+        return jsonify({
+            "error": f"Erro ao criar evento: {erro_msg}",
+            "status": "erro",
+            "detalhes_erro": {
+                "tipo": type(e).__name__,
+                "mensagem": erro_msg
+            }
+        }), 500
 
 # Rota para iniciar autenticação
 @app.route('/auth')
 def auth():
     try:
         get_service()
-        return jsonify({"message": "Autenticação realizada com sucesso!"})
+        return jsonify({
+            "message": "Autenticação realizada com sucesso!",
+            "status": "sucesso"
+        })
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({
+            "error": f"Erro na autenticação: {str(e)}",
+            "status": "erro"
+        }), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
