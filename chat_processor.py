@@ -198,16 +198,16 @@ def processar_comando(texto, service):
     
     try:
         # Verifica se é consulta de disponibilidade
-        if any(padrao in texto for padrao in ['horário livre', 'horários livres', 'está livre', 'disponibilidade']):
+        if any(palavra in texto for palavra in ['livre', 'disponibilidade', 'quando']):
             # Determina o período
             inicio = datetime.now(pytz.timezone('America/Sao_Paulo'))
             fim = inicio + timedelta(days=7)  # Padrão: próxima semana
             
             if 'próximas semanas' in texto:
                 fim = inicio + timedelta(weeks=3)
-            elif 'semana que vem' in texto or 'próxima semana' in texto:
+            elif 'próxima semana' in texto or 'semana que vem' in texto:
                 inicio = inicio + timedelta(days=7)
-                fim = inicio + timedelta(days=7)
+                fim = inicio + timedelta(days=14)
             
             # Determina a pessoa
             calendar_id = extrair_email(texto)

@@ -2,99 +2,76 @@
 CONSULTAS = {
     'hoje': {
         'padroes': [
-            'agenda de hoje',
-            'eventos hoje',
-            'compromissos hoje',
             'o que tem hoje',
-            'agenda do dia',
-            'agenda hoje'
+            'agenda hoje',
+            'eventos hoje',
+            'compromissos hoje'
         ],
         'dias': 0
     },
     'amanha': {
         'padroes': [
-            'agenda de amanhã',
-            'eventos amanhã',
-            'compromissos amanhã',
             'o que tem amanhã',
-            'agenda amanhã'
+            'agenda amanhã',
+            'eventos amanhã',
+            'compromissos amanhã'
         ],
         'dias': 1
     },
     'data_especifica': {
         'padroes': [
-            'agenda do dia {data}',
-            'eventos do dia {data}',
+            'o que tem dia {data}',
             'agenda dia {data}',
             'eventos dia {data}',
-            'o que tem dia {data}',
-            'compromissos dia {data}',
-            'agenda {data}',
-            'eventos {data}',
-            'o que tem {data}'
+            'compromissos dia {data}'
         ]
     }
 }
 
 # Padrões de consulta para outras pessoas
 CONSULTA_PESSOA = [
-    'agenda do {pessoa} dia {data}',
-    'eventos do {pessoa} dia {data}',
+    'o que o {pessoa} tem hoje',
+    'o que o {pessoa} tem amanhã',
     'o que o {pessoa} tem dia {data}',
-    'compromissos do {pessoa} dia {data}',
-    'agenda do {pessoa} {data}',
-    'o que o {pessoa} tem {data}',
-    'agenda do {pessoa}',
-    'eventos do {pessoa}'
+    'agenda do {pessoa} hoje',
+    'agenda do {pessoa} amanhã',
+    'agenda do {pessoa} dia {data}'
 ]
 
-# Comandos padrão para criação
-CRIACAO = {
-    'padrao_simples': [
-        'criar evento {titulo} dia {data} às {hora}',
-        'agendar {titulo} dia {data} às {hora}',
-        'marcar {titulo} dia {data} às {hora}',
-        'criar {titulo} dia {data} às {hora}',
-        'agendar {titulo} para {data} às {hora}'
+# Padrões de disponibilidade
+DISPONIBILIDADE = {
+    'propria': [
+        'quando estou livre',
+        'meus horários livres',
+        'quais horários tenho livre',
+        'quando posso marcar algo'
     ],
-    'padrao_local': [
-        'criar evento {titulo} no {local} dia {data} às {hora}',
-        'agendar {titulo} no {local} dia {data} às {hora}',
-        'marcar {titulo} no {local} dia {data} às {hora}',
-        'criar {titulo} no {local} dia {data} às {hora}'
+    'outra_pessoa': [
+        'quando o {pessoa} está livre',
+        'horários livres do {pessoa}',
+        'quando o {pessoa} pode',
+        'disponibilidade do {pessoa}'
+    ],
+    'periodo': [
+        'essa semana',
+        'próxima semana',
+        'semana que vem',
+        'próximas semanas',
+        'próximos dias'
     ]
 }
 
-# Comandos para eventos com outras pessoas
-CRIACAO_COM_PESSOA = [
-    'marcar {tipo} com {pessoa} dia {data} às {hora}',
-    'agendar {tipo} com {pessoa} dia {data} às {hora}',
-    'marcar {tipo} com {pessoa} {data} às {hora}',
-    'agendar consulta com {pessoa} para {data} às {hora}'
-]
-
-# Comandos para verificar disponibilidade
-CONSULTA_DISPONIBILIDADE = {
-    'propria': [
-        'horários livres dessa semana',
-        'quando estou livre essa semana',
-        'qual horário livre eu tenho',
-        'quando posso marcar algo',
-        'mostre meus horários livres'
+# Comandos para criação de eventos
+CRIACAO = {
+    'simples': [
+        'marcar {tipo} dia {data} às {hora}',
+        'agendar {tipo} dia {data} às {hora}',
+        'criar {tipo} dia {data} às {hora}'
     ],
-    'outra_pessoa': [
-        'horários livres do {pessoa}',
-        'quando o {pessoa} está livre',
-        'qual horário livre o {pessoa} tem',
-        'disponibilidade do {pessoa}',
-        'horários disponíveis do {pessoa}'
-    ],
-    'periodo': [
-        'próximas semanas',
-        'próximos dias',
-        'essa semana',
-        'semana que vem',
-        'próxima semana'
+    'com_pessoa': [
+        'marcar {tipo} com {pessoa} dia {data} às {hora}',
+        'agendar {tipo} com {pessoa} dia {data} às {hora}',
+        'criar {tipo} com {pessoa} dia {data} às {hora}'
     ]
 }
 
