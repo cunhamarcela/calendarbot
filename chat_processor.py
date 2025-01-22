@@ -1,34 +1,27 @@
-from openai import OpenAI
 from datetime import datetime, timedelta
 import json
 import os
 import pytz
 from dateutil import parser
+import requests
 
-# Inicializa o cliente OpenAI de forma mais segura
-api_key = os.environ.get('OPENAI_API_KEY')
-if not api_key:
+API_KEY = os.environ.get('OPENAI_API_KEY')
+if not API_KEY:
     raise ValueError("OPENAI_API_KEY não encontrada nas variáveis de ambiente")
 
-try:
-    client = OpenAI(api_key=api_key)
-except Exception as e:
-    print(f"Erro ao inicializar OpenAI: {e}")
-    client = None
-
-def processar_comando(texto, service):
-    """Processa o comando do usuário usando GPT"""
-    if not client:
-        return {
-            "status": "erro",
-            "mensagem": "Serviço OpenAI não está disponível"
-        }
-
-    try:
-        resposta = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": """
+def chamar_openai_api(texto):
+    """Chama a API do OpenAI diretamente"""
+    headers = {
+        'Authorization': f'Bearer {API_KEY}',
+        'Content-Type': 'application/json'
+    }
+    
+    data = {
+        'model': 'gpt-3.5-turbo',
+        'messages': [
+            {
+                'role': 'system',
+                'content': """
                     Você é um assistente de agenda que extrai informações de comandos em português.
                     Retorne apenas um JSON com:
                     {
@@ -38,12 +31,32 @@ def processar_comando(texto, service):
                         "email": email da pessoa (para consultar),
                         "duracao": duração em minutos (padrão 60)
                     }
-                """},
-                {"role": "user", "content": texto}
-            ]
-        )
-        
-        dados = json.loads(resposta.choices[0].message.content)
+                """
+            },
+            {
+                'role': 'user',
+                'content': texto
+            }
+        ]
+    }
+    
+    response = requests.post(
+        'https://api.openai.com/v1/chat/completions',
+        headers=headers,
+        json=data
+    )
+    
+    if response.status_code != 200:
+        raise Exception(f"Erro na API do OpenAI: {response.text}")
+    
+    return response.json()
+
+def processar_comando(texto, service):
+    """Processa o comando do usuário usando GPT"""
+    try:
+        resposta = chamar_openai_api(texto)
+        conteudo = resposta['choices'][0]['message']['content']
+        dados = json.loads(conteudo)
         
         if dados["acao"] == "criar":
             return criar_evento(service, dados)
