@@ -4,9 +4,18 @@ from googleapiclient.discovery import build
 from google.oauth2.credentials import Credentials
 import json
 import os
+import pathlib
 
 # Configurações de ambiente
 os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
+
+# Configuração de diretórios
+BASE_DIR = pathlib.Path(__file__).parent
+DATA_DIR = BASE_DIR / 'data'
+TOKEN_PATH = DATA_DIR / 'token.json'
+
+# Cria o diretório de dados se não existir
+DATA_DIR.mkdir(exist_ok=True)
 
 app = Flask(__name__)
 
@@ -27,8 +36,9 @@ def salvar_credenciais(creds):
             'client_secret': creds.client_secret,
             'scopes': creds.scopes
         }
-        with open('token.json', 'w') as token:
+        with open(TOKEN_PATH, 'w') as token:
             json.dump(creds_data, token)
+        print(f"Credenciais salvas em: {TOKEN_PATH}")
         return True
     except Exception as e:
         print(f"Erro ao salvar credenciais: {e}")
@@ -37,7 +47,11 @@ def salvar_credenciais(creds):
 def carregar_credenciais():
     """Carrega credenciais salvas"""
     try:
-        with open('token.json', 'r') as token:
+        if not TOKEN_PATH.exists():
+            print("Arquivo de token não encontrado")
+            return None
+            
+        with open(TOKEN_PATH, 'r') as token:
             creds_data = json.load(token)
             return Credentials.from_authorized_user_info(creds_data, SCOPES)
     except Exception as e:

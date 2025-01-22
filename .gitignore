@@ -1,0 +1,5 @@
+# Arquivos de credenciais
+data/
+token.json
+*.pyc
+__pycache__/ 
