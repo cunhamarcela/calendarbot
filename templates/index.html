@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Google Calendar Manager</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f0f0f0;
+        }
+        .container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .event-form {
+            margin-bottom: 30px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input, textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #4285f4;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #357abd;
+        }
+        .events-list {
+            margin-top: 20px;
+        }
+        .event-item {
+            padding: 10px;
+            border-bottom: 1px solid #ddd;
+        }
+        .error {
+            color: red;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Gerenciador de Agenda Google</h1>
+        
+        <div class="event-form">
+            <h2>Criar Novo Evento</h2>
+            <form id="createEventForm">
+                <div class="form-group">
+                    <label for="summary">Título:</label>
+                    <input type="text" id="summary" required>
+                </div>
+                <div class="form-group">
+                    <label for="location">Local:</label>
+                    <input type="text" id="location">
+                </div>
+                <div class="form-group">
+                    <label for="start">Data/Hora Início:</label>
+                    <input type="datetime-local" id="start" required>
+                </div>
+                <div class="form-group">
+                    <label for="end">Data/Hora Fim:</label>
+                    <input type="datetime-local" id="end" required>
+                </div>
+                <div class="form-group">
+                    <label for="attendees">Participantes (emails separados por vírgula):</label>
+                    <input type="text" id="attendees" placeholder="email1@exemplo.com, email2@exemplo.com">
+                </div>
+                <button type="submit">Criar Evento</button>
+            </form>
+        </div>
+
+        <div class="events-list">
+            <h2>Próximos Eventos</h2>
+            <button onclick="loadEvents()">Atualizar Lista</button>
+            <div id="eventsList"></div>
+        </div>
+    </div>
+
+    <script>
+        // Carregar eventos ao iniciar a página
+        document.addEventListener('DOMContentLoaded', loadEvents);
+
+        // Função para carregar eventos
+        function loadEvents() {
+            fetch('/listar')
+                .then(response => response.json())
+                .then(data => {
+                    const eventsDiv = document.getElementById('eventsList');
+                    eventsDiv.innerHTML = '';
+                    
+                    if (data.message) {
+                        eventsDiv.innerHTML = `<p>${data.message}</p>`;
+                        return;
+                    }
+
+                    data.events.forEach(event => {
+                        const eventDiv = document.createElement('div');
+                        eventDiv.className = 'event-item';
+                        eventDiv.innerHTML = `
+                            <strong>${event.summary}</strong><br>
+                            ${new Date(event.start).toLocaleString()}
+                        `;
+                        eventsDiv.appendChild(eventDiv);
+                    });
+                })
+                .catch(error => console.error('Erro ao carregar eventos:', error));
+        }
+
+        // Manipular envio do formulário
+        document.getElementById('createEventForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const attendeesArray = document.getElementById('attendees').value
+                .split(',')
+                .map(email => email.trim())
+                .filter(email => email);
+
+            const eventData = {
+                summary: document.getElementById('summary').value,
+                location: document.getElementById('location').value,
+                start: document.getElementById('start').value + ':00Z',
+                end: document.getElementById('end').value + ':00Z',
+                attendees: attendeesArray
+            };
+
+            fetch('/criar', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(eventData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                alert(data.message);
+                loadEvents();
+                document.getElementById('createEventForm').reset();
+            })
+            .catch(error => {
+                console.error('Erro ao criar evento:', error);
+                alert('Erro ao criar evento');
+            });
+        });
+    </script>
+</body>
+</html> 

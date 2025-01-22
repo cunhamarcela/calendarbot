@@ -1,5 +1,13 @@
+<<<<<<< HEAD
 flask
 google-api-python-client
 google-auth
 google-auth-oauthlib
 google-auth-httplib2
+=======
+flask
+google-api-python-client
+google-auth
+google-auth-oauthlib
+google-auth-httplib2
+>>>>>>> dfef404 (Inicializa repositório com arquivos do projeto)
