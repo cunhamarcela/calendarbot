@@ -1,13 +1,5 @@
-<<<<<<< HEAD
-flask
-google-api-python-client
-google-auth
-google-auth-oauthlib
-google-auth-httplib2
-=======
-flask
-google-api-python-client
-google-auth
-google-auth-oauthlib
-google-auth-httplib2
->>>>>>> dfef404 (Inicializa repositório com arquivos do projeto)
+flask==3.1.0
+google-api-python-client==2.93.0
+google-auth==2.23.4
+google-auth-oauthlib==1.2.0
+google-auth-httplib2==0.2.0
