@@ -1,145 +1,165 @@
 from datetime import datetime, timedelta
-import json
-import os
+import re
 import pytz
 from dateutil import parser
-import requests
+from dateutil.relativedelta import relativedelta
 
-API_KEY = os.environ.get('OPENAI_API_KEY')
-if not API_KEY:
-    raise ValueError("OPENAI_API_KEY não encontrada nas variáveis de ambiente")
-
-def chamar_openai_api(texto):
-    """Chama a API do OpenAI diretamente"""
-    headers = {
-        'Authorization': f'Bearer {API_KEY}',
-        'Content-Type': 'application/json'
+def extrair_data_hora(texto):
+    """Extrai data e hora do texto"""
+    texto = texto.lower()
+    agora = datetime.now(pytz.timezone('America/Sao_Paulo'))
+    
+    # Padrões de data/hora
+    padrao_data_hora = {
+        r'hoje[^\d]*(\d{1,2})[h:]?(\d{2})?\s*': lambda m: agora.replace(
+            hour=int(m.group(1)), 
+            minute=int(m.group(2)) if m.group(2) else 0
+        ),
+        r'amanhã[^\d]*(\d{1,2})[h:]?(\d{2})?\s*': lambda m: (agora + timedelta(days=1)).replace(
+            hour=int(m.group(1)), 
+            minute=int(m.group(2)) if m.group(2) else 0
+        ),
+        r'(\d{1,2})/(\d{1,2})(?:/(\d{4}))?\s+(?:as\s+)?(\d{1,2})[h:]?(\d{2})?\s*': lambda m: agora.replace(
+            day=int(m.group(1)),
+            month=int(m.group(2)),
+            year=int(m.group(3)) if m.group(3) else agora.year,
+            hour=int(m.group(4)),
+            minute=int(m.group(5)) if m.group(5) else 0
+        ),
+        r'próxima\s+(\w+)(?:\s+[àa]s?\s+(\d{1,2})[h:]?(\d{2})?)?\s*': lambda m: calcular_proximo_dia(
+            m.group(1),
+            int(m.group(2)) if m.group(2) else 9,
+            int(m.group(3)) if m.group(3) else 0
+        )
     }
     
-    data = {
-        'model': 'gpt-3.5-turbo',
-        'messages': [
-            {
-                'role': 'system',
-                'content': """
-                    Você é um assistente de agenda que extrai informações de comandos em português.
-                    Retorne apenas um JSON com:
-                    {
-                        "acao": "criar" ou "consultar",
-                        "data": data em ISO format,
-                        "titulo": título do evento (para criar),
-                        "email": email da pessoa (para consultar),
-                        "duracao": duração em minutos (padrão 60)
-                    }
-                """
-            },
-            {
-                'role': 'user',
-                'content': texto
-            }
-        ]
+    for padrao, func in padrao_data_hora.items():
+        match = re.search(padrao, texto)
+        if match:
+            return func(match)
+    
+    return None
+
+def calcular_proximo_dia(dia_semana, hora=9, minuto=0):
+    """Calcula a próxima ocorrência de um dia da semana"""
+    dias = {
+        'segunda': 0, 'segunda-feira': 0,
+        'terça': 1, 'terca': 1, 'terça-feira': 1,
+        'quarta': 2, 'quarta-feira': 2,
+        'quinta': 3, 'quinta-feira': 3,
+        'sexta': 4, 'sexta-feira': 4,
+        'sábado': 5, 'sabado': 5,
+        'domingo': 6
     }
     
-    response = requests.post(
-        'https://api.openai.com/v1/chat/completions',
-        headers=headers,
-        json=data
-    )
-    
-    if response.status_code != 200:
-        raise Exception(f"Erro na API do OpenAI: {response.text}")
-    
-    return response.json()
+    if dia_semana.lower() not in dias:
+        return None
+        
+    agora = datetime.now(pytz.timezone('America/Sao_Paulo'))
+    dia_alvo = dias[dia_semana.lower()]
+    dias_adicionar = (dia_alvo - agora.weekday() + 7) % 7
+    if dias_adicionar == 0:
+        dias_adicionar = 7
+        
+    data = agora + timedelta(days=dias_adicionar)
+    return data.replace(hour=hora, minute=minuto)
 
 def processar_comando(texto, service):
-    """Processa o comando do usuário usando GPT"""
+    """Processa comandos em linguagem natural"""
+    texto = texto.lower()
+    
     try:
-        resposta = chamar_openai_api(texto)
-        conteudo = resposta['choices'][0]['message']['content']
-        dados = json.loads(conteudo)
-        
-        if dados["acao"] == "criar":
-            return criar_evento(service, dados)
-        elif dados["acao"] == "consultar":
-            return consultar_agenda(service, dados)
-        
+        # Verifica se é um comando de criação
+        if any(palavra in texto for palavra in ['crie', 'agende', 'marque', 'criar', 'agendar', 'marcar']):
+            # Extrai título do evento
+            match_titulo = re.search(r'chamado\s+(.+?)(?:\s+(?:dia|às|as|no dia|em|para)|$)', texto)
+            if not match_titulo:
+                match_titulo = re.search(r'(?:crie|agende|marque)\s+(?:uma|um)?\s*(.+?)(?:\s+(?:dia|às|as|no dia|em|para)|$)', texto)
+            
+            if not match_titulo:
+                return {
+                    "status": "erro",
+                    "mensagem": "Não consegui entender o título do evento"
+                }
+            
+            titulo = match_titulo.group(1).strip()
+            data_hora = extrair_data_hora(texto)
+            
+            if not data_hora:
+                return {
+                    "status": "erro",
+                    "mensagem": "Não consegui entender a data e hora do evento"
+                }
+            
+            # Cria o evento
+            evento = {
+                'summary': titulo,
+                'start': {
+                    'dateTime': data_hora.isoformat(),
+                    'timeZone': 'America/Sao_Paulo',
+                },
+                'end': {
+                    'dateTime': (data_hora + timedelta(hours=1)).isoformat(),
+                    'timeZone': 'America/Sao_Paulo',
+                }
+            }
+            
+            evento_criado = service.events().insert(
+                calendarId='primary',
+                body=evento
+            ).execute()
+            
+            return {
+                "status": "sucesso",
+                "mensagem": f"Evento '{titulo}' criado para {data_hora.strftime('%d/%m/%Y às %H:%M')}",
+                "link": evento_criado['htmlLink']
+            }
+            
+        # Verifica se é um comando de consulta
+        elif any(palavra in texto for palavra in ['mostre', 'liste', 'quais', 'tem', 'há', 'consulte']):
+            data = extrair_data_hora(texto)
+            if not data:
+                # Se não encontrou data específica, assume hoje
+                data = datetime.now(pytz.timezone('America/Sao_Paulo'))
+            
+            inicio = data.replace(hour=0, minute=0, second=0).isoformat()
+            fim = data.replace(hour=23, minute=59, second=59).isoformat()
+            
+            events_result = service.events().list(
+                calendarId='primary',
+                timeMin=inicio,
+                timeMax=fim,
+                singleEvents=True,
+                orderBy='startTime'
+            ).execute()
+            
+            events = events_result.get('items', [])
+            
+            if not events:
+                return {
+                    "status": "sucesso",
+                    "mensagem": f"Nenhum evento encontrado para {data.strftime('%d/%m/%Y')}"
+                }
+            
+            eventos_formatados = []
+            for event in events:
+                start = event['start'].get('dateTime', event['start'].get('date'))
+                start_time = parser.parse(start).strftime('%H:%M')
+                eventos_formatados.append(f"- {start_time}: {event['summary']}")
+            
+            return {
+                "status": "sucesso",
+                "mensagem": f"Eventos para {data.strftime('%d/%m/%Y')}:\n" + "\n".join(eventos_formatados)
+            }
+            
+        else:
+            return {
+                "status": "erro",
+                "mensagem": "Desculpe, não entendi o comando. Tente algo como:\n- crie uma reunião amanhã às 15h\n- mostre meus eventos de hoje"
+            }
+            
     except Exception as e:
         return {
             "status": "erro",
             "mensagem": f"Erro ao processar comando: {str(e)}"
-        }
-
-def criar_evento(service, dados):
-    """Cria um evento baseado nos dados processados"""
-    try:
-        inicio = parser.parse(dados["data"])
-        fim = inicio + timedelta(minutes=dados.get("duracao", 60))
-        
-        evento = {
-            'summary': dados["titulo"],
-            'start': {
-                'dateTime': inicio.isoformat(),
-                'timeZone': 'America/Sao_Paulo',
-            },
-            'end': {
-                'dateTime': fim.isoformat(),
-                'timeZone': 'America/Sao_Paulo',
-            }
-        }
-        
-        evento_criado = service.events().insert(
-            calendarId='primary',
-            body=evento
-        ).execute()
-        
-        return {
-            "status": "sucesso",
-            "mensagem": f"Evento '{dados['titulo']}' criado para {inicio.strftime('%d/%m/%Y %H:%M')}",
-            "link": evento_criado['htmlLink']
-        }
-        
-    except Exception as e:
-        return {
-            "status": "erro",
-            "mensagem": f"Erro ao criar evento: {str(e)}"
-        }
-
-def consultar_agenda(service, dados):
-    """Consulta a agenda de uma pessoa"""
-    try:
-        data = parser.parse(dados["data"])
-        inicio = data.replace(hour=0, minute=0, second=0).isoformat() + 'Z'
-        fim = data.replace(hour=23, minute=59, second=59).isoformat() + 'Z'
-        
-        events_result = service.events().list(
-            calendarId=dados.get("email", 'primary'),
-            timeMin=inicio,
-            timeMax=fim,
-            singleEvents=True,
-            orderBy='startTime'
-        ).execute()
-        
-        events = events_result.get('items', [])
-        
-        if not events:
-            return {
-                "status": "sucesso",
-                "mensagem": f"Nenhum evento encontrado para {data.strftime('%d/%m/%Y')}"
-            }
-        
-        eventos_formatados = []
-        for event in events:
-            start = event['start'].get('dateTime', event['start'].get('date'))
-            start_time = parser.parse(start).strftime('%H:%M')
-            eventos_formatados.append(f"- {start_time}: {event['summary']}")
-        
-        return {
-            "status": "sucesso",
-            "mensagem": f"Eventos encontrados para {data.strftime('%d/%m/%Y')}:\n" + "\n".join(eventos_formatados)
-        }
-        
-    except Exception as e:
-        return {
-            "status": "erro",
-            "mensagem": f"Erro ao consultar agenda: {str(e)}"
         } 
