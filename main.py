@@ -10,12 +10,12 @@ import pathlib
 os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
 
 # Configuração de diretórios
-BASE_DIR = pathlib.Path(__file__).parent
-DATA_DIR = BASE_DIR / 'data'
-TOKEN_PATH = DATA_DIR / 'token.json'
+DATA_DIR = pathlib.Path("/opt/render/project/src/data")
+TOKEN_PATH = DATA_DIR / "token.json"
+CREDENTIALS_PATH = DATA_DIR / "credentials.json"
 
 # Cria o diretório de dados se não existir
-DATA_DIR.mkdir(exist_ok=True)
+DATA_DIR.mkdir(exist_ok=True, parents=True)
 
 app = Flask(__name__)
 
@@ -79,7 +79,7 @@ def home():
 def auth():
     try:
         flow = InstalledAppFlow.from_client_secrets_file(
-            'credentials.json',
+            CREDENTIALS_PATH,
             SCOPES,
             redirect_uri=os.environ.get('REDIRECT_URI', 'http://localhost:8080/oauth2callback')
         )
@@ -99,7 +99,7 @@ def auth():
 def oauth2callback():
     try:
         flow = InstalledAppFlow.from_client_secrets_file(
-            'credentials.json',
+            CREDENTIALS_PATH,
             SCOPES,
             redirect_uri=os.environ.get('REDIRECT_URI', 'http://localhost:8080/oauth2callback')
         )

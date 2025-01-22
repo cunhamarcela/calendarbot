@@ -8,11 +8,15 @@ threads = 4
 worker_class = "gthread"
 timeout = 120
 
-# Garante que o diretório de dados existe
+# Configuração de diretórios
+data_dir = "/opt/render/project/src/data"
+
 def on_starting(server):
-    base_dir = pathlib.Path(__file__).parent
-    data_dir = base_dir / 'data'
-    data_dir.mkdir(exist_ok=True)
+    """Configuração inicial do servidor"""
+    # Cria diretório de dados se não existir
+    if not os.path.exists(data_dir):
+        os.makedirs(data_dir, mode=0o755)
+    else:
+        os.chmod(data_dir, 0o755)
     
-    # Ajusta permissões se necessário
-    os.chmod(data_dir, 0o755) 
+    print(f"Diretório de dados configurado em: {data_dir}") 
