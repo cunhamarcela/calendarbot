@@ -1,29 +1,34 @@
-# Mapeamento de nomes para emails
+# Configurações do Google Calendar
+SCOPES = ['https://www.googleapis.com/auth/calendar']
+CLIENT_SECRETS_FILE = "credentials.json"
+TOKEN_FILE = "token.pickle"
+
+# Mapeamento de pessoas e seus emails
 PESSOAS = {
-    'alberto': 'aa@brius.com.br',
-    'alberto andré': 'aa@brius.com.br',
-    'andré': 'aa@brius.com.br',
+    'alberto': 'alberto@email.com',
+    'andré': 'andre@email.com',
+    # Adicione mais pessoas aqui
 }
 
-# Mapeamento de locais comuns
+# Mapeamento de locais e endereços
 LOCAIS = {
-    'escritório': 'Rua Aiuruoca, 22',
-    'pediatra': 'Av. Principal, 789 - 10º andar',
-    'depilação': 'Sala de Reuniões - 3º andar',
-    'casa': 'Rua Aiuruoca, 22',
+    'consultório': 'Rua Exemplo, 123',
+    'pediatra': 'Av. Médico, 456',
+    # Adicione mais locais aqui
 }
 
-# Durações padrão por tipo de evento
+# Duração padrão dos eventos em minutos
 DURACOES = {
     'reunião': 60,
     'consulta': 60,
-    'almoço': 90,
-    'café': 30,
+    'terapia': 60,
     'depilação': 120,
+    'pediatra': 60,
+    # Adicione mais tipos de evento aqui
 }
 
 # Horário comercial padrão
 HORARIO_COMERCIAL = {
-    'inicio': 9,
-    'fim': 18,
+    'inicio': 9,  # 9h
+    'fim': 18     # 18h
 } 

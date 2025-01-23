@@ -2,11 +2,12 @@ import os
 import pathlib
 
 # Configuração básica
-bind = "0.0.0.0:10000"
-workers = 2
-threads = 4
-worker_class = "gthread"
+bind = "0.0.0.0:8000"
+workers = 3
 timeout = 120
+worker_class = "sync"
+accesslog = "-"
+errorlog = "-"
 
 # Configuração de diretórios
 data_dir = "/opt/render/project/src/data"

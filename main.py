@@ -9,6 +9,8 @@ import pathlib
 from datetime import datetime, timedelta
 import pytz
 from chat_processor import processar_comando
+from config import SCOPES, CLIENT_SECRETS_FILE, TOKEN_FILE
+import pickle
 
 # Configurações de ambiente
 os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
@@ -23,82 +25,37 @@ DATA_DIR.mkdir(exist_ok=True, parents=True)
 
 app = Flask(__name__)
 
-# Escopos necessários para acessar a Google Agenda
-SCOPES = ['https://www.googleapis.com/auth/calendar']
-
 # Serviço de autenticação global
 service = None
 
-def salvar_credenciais(creds):
-    """Salva as credenciais em um arquivo"""
-    try:
-        creds_data = {
-            'token': creds.token,
-            'refresh_token': creds.refresh_token,
-            'token_uri': creds.token_uri,
-            'client_id': creds.client_id,
-            'client_secret': creds.client_secret,
-            'scopes': creds.scopes
-        }
-        with open(TOKEN_PATH, 'w') as token:
-            json.dump(creds_data, token)
-        print(f"Credenciais salvas em: {TOKEN_PATH}")
-        return True
-    except Exception as e:
-        print(f"Erro ao salvar credenciais: {e}")
-        return False
+def get_google_calendar_service():
+    """Obtém serviço autenticado do Google Calendar"""
+    creds = None
+    
+    # Carrega credenciais salvas
+    if os.path.exists(TOKEN_FILE):
+        with open(TOKEN_FILE, 'rb') as token:
+            creds = pickle.load(token)
+    
+    # Atualiza ou obtém novas credenciais
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file(
+                CLIENT_SECRETS_FILE, SCOPES)
+            creds = flow.run_local_server(port=0)
+        
+        # Salva credenciais
+        with open(TOKEN_FILE, 'wb') as token:
+            pickle.dump(creds, token)
 
-def carregar_credenciais():
-    """Carrega credenciais salvas"""
-    try:
-        if not TOKEN_PATH.exists():
-            print("Arquivo de token não encontrado")
-            return None
-            
-        with open(TOKEN_PATH, 'r') as token:
-            creds_data = json.load(token)
-            creds = Credentials.from_authorized_user_info(creds_data, SCOPES)
-            
-            if not creds.valid:
-                if creds.expired and creds.refresh_token:
-                    print("Renovando token expirado...")
-                    creds.refresh(Request())
-                    salvar_credenciais(creds)
-                else:
-                    print("Credenciais inválidas e não podem ser renovadas")
-                    return None
-            return creds
-    except Exception as e:
-        print(f"Erro ao carregar credenciais: {e}")
-        return None
-
-def get_service():
-    """Retorna o serviço, inicializando se necessário"""
-    global service
-    try:
-        if service is None:
-            creds = carregar_credenciais()
-            if creds and creds.valid:
-                service = build('calendar', 'v3', credentials=creds)
-            else:
-                print("Credenciais não disponíveis ou inválidas")
-                return None
-        return service
-    except Exception as e:
-        print(f"Erro ao obter serviço: {e}")
-        return None
-
-def reset_service():
-    """Reseta o serviço global"""
-    global service
-    service = None
+    return build('calendar', 'v3', credentials=creds)
 
 # Rota inicial
 @app.route('/')
 def home():
-    if get_service() is None:
-        reset_service()  # Limpa o serviço se estiver inválido
-        return render_template('auth_required.html')
+    """Renderiza a página principal"""
     return render_template('index.html')
 
 # Rota para iniciar autenticação
@@ -149,7 +106,7 @@ def oauth2callback():
 # Endpoint para listar eventos
 @app.route('/listar', methods=['GET'])
 def listar_eventos():
-    current_service = get_service()
+    current_service = get_google_calendar_service()
     if current_service is None:
         reset_service()
         return jsonify({"error": "Autenticação necessária", "status": "erro"}), 401
@@ -212,7 +169,7 @@ def listar_eventos():
 # Endpoint para listar calendários disponíveis
 @app.route('/calendarios', methods=['GET'])
 def listar_calendarios():
-    current_service = get_service()
+    current_service = get_google_calendar_service()
     if current_service is None:
         reset_service()
         return jsonify({"error": "Autenticação necessária", "status": "erro"}), 401
@@ -238,7 +195,7 @@ def listar_calendarios():
 # Endpoint para criar um evento
 @app.route('/criar', methods=['POST'])
 def criar_evento():
-    current_service = get_service()
+    current_service = get_google_calendar_service()
     if current_service is None:
         reset_service()
         return jsonify({"error": "Autenticação necessária", "status": "erro"}), 401
@@ -319,23 +276,82 @@ def criar_evento():
 # Endpoint para processar comandos do chat
 @app.route('/chat', methods=['POST'])
 def chat():
-    current_service = get_service()
-    if current_service is None:
-        reset_service()
-        return jsonify({
-            "status": "erro",
-            "mensagem": "Autenticação necessária"
-        }), 401
-    
+    """Processa comandos do chat"""
     try:
-        comando = request.json['comando']
-        resultado = processar_comando(comando, current_service)
+        comando = request.json.get('comando')
+        if not comando:
+            return jsonify({"status": "erro", "mensagem": "Comando não fornecido"})
+        
+        service = get_google_calendar_service()
+        resultado = processar_comando(comando, service)
         return jsonify(resultado)
+        
     except Exception as e:
-        return jsonify({
-            "status": "erro",
-            "mensagem": f"Erro no processamento: {str(e)}"
-        }), 500
+        return jsonify({"status": "erro", "mensagem": str(e)})
+
+def salvar_credenciais(creds):
+    """Salva as credenciais em um arquivo"""
+    try:
+        creds_data = {
+            'token': creds.token,
+            'refresh_token': creds.refresh_token,
+            'token_uri': creds.token_uri,
+            'client_id': creds.client_id,
+            'client_secret': creds.client_secret,
+            'scopes': creds.scopes
+        }
+        with open(TOKEN_PATH, 'w') as token:
+            json.dump(creds_data, token)
+        print(f"Credenciais salvas em: {TOKEN_PATH}")
+        return True
+    except Exception as e:
+        print(f"Erro ao salvar credenciais: {e}")
+        return False
+
+def carregar_credenciais():
+    """Carrega credenciais salvas"""
+    try:
+        if not TOKEN_PATH.exists():
+            print("Arquivo de token não encontrado")
+            return None
+            
+        with open(TOKEN_PATH, 'r') as token:
+            creds_data = json.load(token)
+            creds = Credentials.from_authorized_user_info(creds_data, SCOPES)
+            
+            if not creds.valid:
+                if creds.expired and creds.refresh_token:
+                    print("Renovando token expirado...")
+                    creds.refresh(Request())
+                    salvar_credenciais(creds)
+                else:
+                    print("Credenciais inválidas e não podem ser renovadas")
+                    return None
+            return creds
+    except Exception as e:
+        print(f"Erro ao carregar credenciais: {e}")
+        return None
+
+def get_service():
+    """Retorna o serviço, inicializando se necessário"""
+    global service
+    try:
+        if service is None:
+            creds = carregar_credenciais()
+            if creds and creds.valid:
+                service = build('calendar', 'v3', credentials=creds)
+            else:
+                print("Credenciais não disponíveis ou inválidas")
+                return None
+        return service
+    except Exception as e:
+        print(f"Erro ao obter serviço: {e}")
+        return None
+
+def reset_service():
+    """Reseta o serviço global"""
+    global service
+    service = None
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
